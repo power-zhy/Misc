@@ -2,6 +2,8 @@
 # global variables
 config = None
 logger = None
+urlswitch = None
+
 
 def get_py_path():
 	'''\
@@ -18,6 +20,20 @@ def get_py_path():
 	else:
 		return None
 
+def switch_url(url):
+	global urlswitch
+	if (urlswitch is None):
+		urlswitch = {}
+		data = config["NETWORK"]["URLSwitch"].strip()
+		if (data):
+			for switch in data.split(","):
+				pair = switch.split("->")
+				if (len(pair) == 2):
+					urlswitch[pair[0].strip()] = pair[1].strip()
+	for key in urlswitch:
+		url = url.replace(key, urlswitch[key])
+	return url
+
 def down_url(url, path):
 	'''\
 	Download a web page [url:str] and save to file with [path:str].
@@ -26,6 +42,7 @@ def down_url(url, path):
 	import os
 	import urllib.request
 	
+	url = switch_url(url)
 	if (os.path.isfile(path)) and (os.path.getsize(path) > 0) and (not config["NETWORK"].getboolean("OverrideFile")):
 		logger.info("File {} already exists, skip downloading.".format(path))
 		return
@@ -495,7 +512,7 @@ def tugua_download(url, dir="", date=None):
 	body_tag_dest = dest.new_tag("body")
 	dest.html.append(body_tag_dest)
 	# analyze and convert
-	subtitle_regex = re.compile(r"^【(\d+)】(.*)")
+	subtitle_regex = re.compile(r"^【(\d{1,2})】(.*)")
 	def stop_func(tag):
 		if (not tag) or (not tag.string):
 			return False
