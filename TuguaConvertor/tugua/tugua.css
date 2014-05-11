@@ -1,0 +1,29 @@
+div {
+	margin: 50px 5px 10px;
+}
+
+p, img {
+	margin: 5px 0px 10px;
+}
+
+img.face {
+	margin: auto;
+}
+
+.title {
+	font-weight: bold;
+	font-size: x-large;
+}
+
+.subtitle {
+	font-weight: bold;
+	font-size: large;
+}
+
+.extra {
+	font-style: italic;
+}
+
+.ad {
+	color: gray;
+}
