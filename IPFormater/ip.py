@@ -30,7 +30,7 @@ def str2ipv4(string):
 		port = match.group(1)
 		if (port):
 			port = port[1:]
-			result[4] = hex2int(port[2]) * (16**3) + hex2int(port[3]) * (16**2) + hex2int(port[0]) * 16 + hex2int(port[1])
+			result[4] = hex2int(port[0]) * (16**3) + hex2int(port[1]) * (16**2) + hex2int(port[2]) * 16 + hex2int(port[3])
 		return result
 	
 
