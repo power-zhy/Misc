@@ -626,7 +626,7 @@ def tugua_download(url, dir="", date=None):
 		dest_file.write(dest.prettify().encode(config["TUGUA"]["DestEncoding"]))
 	return
 
-def catalogue_analyze(url, dir=""):
+def catalogue_analyze(url, dir="", choice=""):
 	'''\Analyze tugua catalogue page at [url:str] and download all into [dir:str].
 	Return int - how many tugua downloaded
 	'''
@@ -666,6 +666,8 @@ def catalogue_analyze(url, dir=""):
 			continue
 		tugua_title = title_match.group(0).strip()
 		tugua_date = title_match.group(1)
+		if (choice and choice != tugua_date):
+			continue
 		tugua_dir = os.path.join(dir, tugua_date)
 		#tugua_index = os.path.join(tugua_dir, "{}.html".format(tugua_title))
 		tugua_index = os.path.join(tugua_dir, config["TUGUA"]["DestFile"])
@@ -710,9 +712,17 @@ if __name__ == "__main__":
 		handler.setFormatter(formatter)
 		handler.setLevel(logging.NOTSET)
 		logger.addHandler(handler)
+	# check arguments
+	if (len(sys.argv) > 2):
+		logger.fatal("Usage: {} [date_string]".format(argv[0]))
+		exit(1)
+	if (len(sys.argv) == 2):
+		choice = sys.argv[1]
+	else:
+		choice = ""
 	# downloading
 	try:
-		count = catalogue_analyze(config["TUGUA"]["CatalogURL"])
+		count = catalogue_analyze(config["TUGUA"]["CatalogURL"], "", choice)
 		logger.info("Totally {} tugua downloaded.".format(count))
 		#tugua_download("http://www.dapenti.com/blog/more.asp?name=xilei&id=86617", date="20140130")
 	except:
