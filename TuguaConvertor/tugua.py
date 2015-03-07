@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 # global variables
 config = None
 logger = None
@@ -105,9 +105,9 @@ def tugua_analyze(tag_src, soup_tmpl, stop_func=None):
 		return (width, height)
 	
 	def convert_object(tag):
-		assert (tag.name == "object") or (tag.name == "embed"), "Tag Error!\n  Expect 'object' or 'embed' but actual is '{}'.".format(tag)
+		assert (isinstance(tag, Tag)) and ((tag.name == "object") or (tag.name == "embed")), "Tag Error!\n  Expect 'object' or 'embed' but actual is '{}'.".format(tag)
 		for child in tag.children:
-			if (child.name == "object") or (child.name == "embed"):
+			if (isinstance(child, Tag)) and ((child.name == "object") or (child.name == "embed")):
 				return convert_object(child)
 		assert (tag.get("type")), "Tag Error!\n  No object type found in '{}'.".format(tag)
 		if (tag["type"] == "application/x-shockwave-flash"):
@@ -118,7 +118,7 @@ def tugua_analyze(tag_src, soup_tmpl, stop_func=None):
 				src = tag.get("src")
 			vars = tag.get("flashvars")
 			for child in tag.children:
-				if (child.name == "param"):
+				if (isinstance(child, Tag)) and (child.name == "param"):
 					name = child.get("name")
 					value = child.get("value")
 					if (not name) or (not value):
@@ -150,7 +150,7 @@ def tugua_analyze(tag_src, soup_tmpl, stop_func=None):
 		elif (len(tag["type"]) > 6) and (tag["type"][:6] == "image/"):
 			src = tag.get("data")
 			for child in tag.children:
-				if (child.name == "param"):
+				if (isinstance(child, Tag)) and (child.name == "param"):
 					name = child.get("name")
 					value = child.get("value")
 					if (not value):
@@ -167,14 +167,14 @@ def tugua_analyze(tag_src, soup_tmpl, stop_func=None):
 			return None
 	
 	def convert_para(tag):
-		assert (tag.name == "div") or (tag.name == "p"), "Tag Error!\n  Expect 'div' or 'p' but actual is '{}'.".format(tag)
+		assert (isinstance(tag, Tag)) and ((tag.name == "div") or (tag.name == "p")), "Tag Error!\n  Expect 'div' or 'p' but actual is '{}'.".format(tag)
 		result = tag_convert(tag, ignore_root = True)
 		if (result):
 			result.name = "p"
 		return result
 	
 	def convert_img(tag):
-		assert (tag.name == "img"), "Tag Error!\n  Expect 'img' but actual is '{}'.".format(tag)
+		assert (isinstance(tag, Tag)) and (tag.name == "img"), "Tag Error!\n  Expect 'img' but actual is '{}'.".format(tag)
 		src = tag.get("src")
 		assert (src), "Tag Error!\n  Invalid image url in '{}'.".format(tag)
 		result = soup_tmpl.new_tag("img")
@@ -183,7 +183,7 @@ def tugua_analyze(tag_src, soup_tmpl, stop_func=None):
 		return result
 	
 	def convert_link(tag):
-		assert (tag.name == "a"), "Tag Error!\n  Expect 'a' but actual is '{}'.".format(tag)
+		assert (isinstance(tag, Tag)) and (tag.name == "a"), "Tag Error!\n  Expect 'a' but actual is '{}'.".format(tag)
 		href = tag.get("href")
 		result = tag_convert(tag, ignore_root = True)
 		if (href) and (result):
@@ -194,11 +194,13 @@ def tugua_analyze(tag_src, soup_tmpl, stop_func=None):
 		return result
 	
 	def convert_table(tag):
-		assert (tag.name == "table"), "Tag Error!\n  Expect 'table' but actual is '{}'.".format(tag)
+		assert (isinstance(tag, Tag)) and (tag.name == "table"), "Tag Error!\n  Expect 'table' but actual is '{}'.".format(tag)
 		result = soup_tmpl.new_tag("table")
 		caption = None
 		for child in list(tag.contents):
-			if (child.name == "caption"):
+			if (not isinstance(tag, Tag)):
+				continue
+			elif (child.name == "caption"):
 				caption = tag_convert(child, ignore_root = True)
 				caption.name = child.name
 			elif (child.name == "tr"):
@@ -214,7 +216,7 @@ def tugua_analyze(tag_src, soup_tmpl, stop_func=None):
 		return result
 	
 	def convert_frame(tag):
-		assert (tag.name == "iframe"), "Tag Error!\n  Expect 'iframe' but actual is '{}'.".format(tag)
+		assert (isinstance(tag, Tag)) and (tag.name == "iframe"), "Tag Error!\n  Expect 'iframe' but actual is '{}'.".format(tag)
 		(width, height) = get_obj_size(tag)
 		src = tag.get("src")
 		import re
@@ -277,7 +279,7 @@ def tugua_analyze(tag_src, soup_tmpl, stop_func=None):
 			for child in list(tag.contents):
 				dest = tag_convert(child)
 				if (dest):
-					if (dest.name == ""):
+					if (isinstance(dest, Tag) and dest.name == ""):
 						for ch in list(dest.contents):
 							result.append(ch)
 					else:
@@ -290,7 +292,7 @@ def tugua_analyze(tag_src, soup_tmpl, stop_func=None):
 	while (tag_src):
 		tag_new = tag_convert(tag_src)
 		if (tag_new):
-			if (tag_new.name == ""):
+			if (isinstance(tag_new, Tag) and tag_new.name == ""):
 				for child in list(tag_new.contents):
 					tag_dest.append(child)
 			else:
@@ -340,7 +342,9 @@ def tugua_format(tag_src, soup_tmpl, img_dir="", img_info={}, section_id="", has
 	if (not tag_src.contents):
 		return dest
 	for tag in list(tag_src.contents):
-		if (tag.name == "embed"):
+		if (isinstance(tag, NavigableString)):
+			last_string += tag
+		elif (tag.name == "embed"):
 			complete_last_para()
 			dest.append(tag.wrap(soup_tmpl.new_tag("p")))
 		elif (tag.name == "img"):
@@ -411,8 +415,8 @@ def tugua_format(tag_src, soup_tmpl, img_dir="", img_info={}, section_id="", has
 			link_str = False
 			for child in list(temp.contents):
 				ch = child.contents[0]
-				assert (ch.name != "a"), "Content Error!\n  Nested link found in link '{}'.".format(tag)
-				if (ch.name == "img") or (ch.name == "embed"):
+				assert (not isinstance(ch, Tag) or ch.name != "a"), "Content Error!\n  Nested link found in link '{}'.".format(tag)
+				if (isinstance(ch, Tag)) and ((ch.name == "img") or (ch.name == "embed")):
 					complete_last_para()
 					dest.append(child)
 				else:
@@ -430,13 +434,11 @@ def tugua_format(tag_src, soup_tmpl, img_dir="", img_info={}, section_id="", has
 			temp = tugua_format(tag, soup_tmpl, img_dir=img_dir, img_info=img_info, section_id=section_id)
 			for child in list(temp.contents):
 				dest.append(child)
-		elif (isinstance(tag, NavigableString)):
-			last_string += tag
 		else:
 			assert (False), "Content Error!\n  Unrecognized tag found: '{}'.".format(tag)
 	complete_last_para()
 	if (has_subtitle):
-		assert (dest.contents[0].name == "p"), "Content Error!\n  No subtitle found in section '{}'.".format(tag_src)
+		assert (isinstance(dest.contents[0], Tag)) and (dest.contents[0].name == "p"), "Content Error!\n  No subtitle found in section '{}'.".format(tag_src)
 		dest.contents[0]["class"] = config["IDENT"]["Subtitle"]
 		dest["class"] = config["IDENT"]["Section"]
 	return dest
@@ -573,7 +575,7 @@ def tugua_download(url, dir="", date=None):
 	epi_regex = re.compile(r"^来源：\s*喷嚏网\s*综合编辑$")
 	for child in tag.children:
 		ch = child.contents[0]
-		if (ch.name == "img") or (ch.name == "embed"):
+		if (isinstance(ch, Tag)) and ((ch.name == "img") or (ch.name == "embed")):
 			temp.clear()
 		elif (epi_regex.match(child.get_text())):
 			epi = child
@@ -589,7 +591,8 @@ def tugua_download(url, dir="", date=None):
 	for t in temp[:len(temp)-1]:
 		extra_tag.append(t.extract())
 	ad_tag = dest.new_tag("div")
-	ad_tag.append(temp[len(temp)-1].extract())
+	if (len(temp) > 0):
+		ad_tag.append(temp[len(temp)-1].extract())
 	epilogue_tag = dest.new_tag("div")
 	while(epi):
 		next_epi = epi.next_sibling
