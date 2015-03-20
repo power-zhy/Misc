@@ -645,6 +645,15 @@ def catalogue_analyze(url, dir="", choice=""):
 	catalog_path = os.path.join(dir, config["TUGUA"]["CatalogFile"])
 	if (os.path.isfile(catalog_path)):
 		os.remove(catalog_path)
+	# check existing source if choice is specified
+	if (choice):
+		src_dir = os.path.join(dir, config["TUGUA"]["SrcDir"])
+		if (not os.path.isdir(src_dir)):
+			os.makedirs(src_dir)
+		src_path = os.path.join(src_dir, choice + ".html")
+		if (os.path.isfile(src_path)) and (os.path.getsize(src_path) > 0):
+			tugua_download("", dir=dir, date=choice)
+			return 1
 	# download catalogue
 	down_url(url, catalog_path)
 	with open(catalog_path, "rb") as catalog_file:
