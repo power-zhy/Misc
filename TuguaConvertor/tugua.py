@@ -198,7 +198,7 @@ def tugua_analyze(tag_src, soup_tmpl, stop_func=None):
 		result = soup_tmpl.new_tag("table")
 		caption = None
 		for child in list(tag.contents):
-			if (not isinstance(tag, Tag)):
+			if (not isinstance(child, Tag)):
 				continue
 			elif (child.name == "caption"):
 				caption = tag_convert(child, ignore_root = True)
@@ -206,6 +206,8 @@ def tugua_analyze(tag_src, soup_tmpl, stop_func=None):
 			elif (child.name == "tr"):
 				row = soup_tmpl.new_tag("tr")
 				for ch in list(child.contents):
+					if (not isinstance(ch, Tag)):
+						continue
 					if (ch.name == "th") or (ch.name == "td"):
 						item = tag_convert(ch, ignore_root = True)
 						item.name = ch.name
@@ -514,13 +516,13 @@ def tugua_download(url, dir="", date=None):
 	body_tag_dest = dest.new_tag("body")
 	dest.html.append(body_tag_dest)
 	# analyze and convert
-	subtitle_regex = re.compile(r"^【(\d{1,2})】(.*)")
+	subtitle_regex = re.compile(r"^【(\d{0,2})】(.*)")
 	def stop_func(tag):
 		if (not tag) or (not tag.string):
 			return False
-		if (tag.string == end_tag_src):
+		if (tag.string.strip() == end_tag_src.strip()):
 			return True
-		elif (subtitle_regex.match(tag.string)):
+		elif (subtitle_regex.match(tag.string.strip())):
 			return True
 		else:
 			return False
