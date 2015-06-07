@@ -173,6 +173,11 @@ def tugua_analyze(tag_src, soup_tmpl, stop_func=None):
 			result.name = "p"
 		return result
 	
+	def convert_br(tag):
+		assert (isinstance(tag, Tag)) and (tag.name == "br"), "Tag Error!\n  Expect 'br' but actual is '{}'.".format(tag)
+		assert (not tag.contents), "Tag 'br' should have no contents."
+		return soup_tmpl.new_tag("br")
+	
 	def convert_img(tag):
 		assert (isinstance(tag, Tag)) and (tag.name == "img"), "Tag Error!\n  Expect 'img' but actual is '{}'.".format(tag)
 		src = tag.get("src")
@@ -258,6 +263,7 @@ def tugua_analyze(tag_src, soup_tmpl, stop_func=None):
 		"embed": convert_object,
 		"div": convert_para,
 		"p": convert_para,
+		"br": convert_br,
 		"img": convert_img,
 		"a": convert_link,
 		"table": convert_table,
@@ -345,7 +351,7 @@ def tugua_format(tag_src, soup_tmpl, img_dir="", img_info={}, section_id="", has
 		return dest
 	for tag in list(tag_src.contents):
 		if (isinstance(tag, NavigableString)):
-			last_string += tag
+			last_string += tag.strip()
 		elif (tag.name == "embed"):
 			complete_last_para()
 			dest.append(tag.wrap(soup_tmpl.new_tag("p")))
@@ -436,6 +442,9 @@ def tugua_format(tag_src, soup_tmpl, img_dir="", img_info={}, section_id="", has
 			temp = tugua_format(tag, soup_tmpl, img_dir=img_dir, img_info=img_info, section_id=section_id)
 			for child in list(temp.contents):
 				dest.append(child)
+		elif (tag.name == "br"):
+			complete_last_para()
+			assert (not tag.contents), "Tag 'br' should have no contents."
 		else:
 			assert (False), "Content Error!\n  Unrecognized tag found: '{}'.".format(tag)
 	complete_last_para()
