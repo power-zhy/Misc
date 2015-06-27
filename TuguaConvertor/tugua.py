@@ -489,13 +489,17 @@ def tugua_download(url, dir="", date=None):
 			for enc in encode.split():
 				try:
 					src = BeautifulSoup(data.decode(enc))
+					logger.info("Decoding success by '{}'".format(enc))
+					break
 				except Exception as e:
 					logger.warn("Try to decode using '{}' failed: {}".format(enc, str(e)))
 		if (not src):
 			src = BeautifulSoup(data)
 	dest = BeautifulSoup()
 	# analyze source title and frame
-	title = src.find("title").get_text()
+	title_tag_src = src.find("title")
+	assert (title_tag_src), "No title found!"
+	title = title_tag_src.get_text()
 	title_match = re.search(r"【喷嚏图卦(\d{8})】\S.*$", title)
 	assert (title_match), "No title found!\n  Title tag is '{}'.".format(title)
 	assert (date_str == title_match.group(1)), "Date mismatch!\n  Input is '{}', actual is '{}'.".format(date_str, title_match.group(1))
