@@ -41,14 +41,20 @@ def down_url(url, path):
 	'''
 	import os
 	import urllib.request
+	import socket
 	
 	url = switch_url(url)
 	if (os.path.isfile(path)) and (os.path.getsize(path) > 0) and (not config["NETWORK"].getboolean("OverrideFile")):
 		logger.info("File {} already exists, skip downloading.".format(path))
 		return
 	logger.info("Downloading {} to {} ...".format(url, path))
-	with urllib.request.urlopen(url, timeout=30) as url_data, open(path, "wb") as file_data:
-		file_data.write(url_data.read())
+	for retry in range(config["NETWORK"].getint("DownloadMaxRetry")):
+		try:
+			with urllib.request.urlopen(url, timeout=config["NETWORK"].getint("DownloadTimeout")) as url_data, open(path, "wb") as file_data:
+				file_data.write(url_data.read())
+			break
+		except socket.timeout:
+			continue
 	return
 
 def tugua_analyze(tag_src, soup_tmpl, stop_func=None):
@@ -420,23 +426,33 @@ def tugua_format(tag_src, soup_tmpl, img_dir="", img_info={}, section_id="", has
 					dest.append(tag.wrap(soup_tmpl.new_tag("p")))
 		elif (tag.name == "a"):
 			temp = tugua_format(tag, soup_tmpl, img_dir=img_dir, img_info=img_info, section_id=section_id)
-			link_str = False
+			link_contents = []
 			for child in list(temp.contents):
-				ch = child.contents[0]
-				assert (not isinstance(ch, Tag) or ch.name != "a"), "Content Error!\n  Nested link found in link '{}'.".format(tag)
-				if (isinstance(ch, Tag)) and ((ch.name == "img") or (ch.name == "embed")):
-					complete_last_para()
-					dest.append(child)
-				else:
-					assert (not link_str) and (len(child.contents) == 1) and (isinstance(child.contents[0], NavigableString)), "Content Error!\n  Multiple object found in link '{}'.".format(tag)
-					link_str = True
+				for ch in child.contents:
+					if (isinstance(ch, NavigableString) or (isinstance(ch, Tag) and (ch.name == "img") and ch["src"].startswith(config["IDENT"]["Face"]))):
+						link_contents.append(ch)
+					else:
+						if (link_contents):
+							temp = soup_tmpl.new_tag("a")
+							temp["href"] = tag["href"]
+							for content in link_contents:
+								temp.append(content)
+							complete_last_string()
+							last_para.append(temp)
+							link_contents = []
+						if (isinstance(ch, Tag)) and ((ch.name == "img") or (ch.name == "embed")):
+							complete_last_para()
+							dest.append(child)
+						else:
+							assert (False), "Content Error!\n  Multiple object found in link '{}'.".format(tag)
+				if (link_contents):
 					temp = soup_tmpl.new_tag("a")
 					temp["href"] = tag["href"]
-					temp.string = soup_tmpl.new_string(child.get_text())
+					for content in link_contents:
+						temp.append(content)
 					complete_last_string()
 					last_para.append(temp)
-			if (not link_str):
-				logger.warn("Unrecognized link string in '{}'.".format(tag))
+					link_contents = []
 		elif (tag.name == "p"):
 			complete_last_para()
 			temp = tugua_format(tag, soup_tmpl, img_dir=img_dir, img_info=img_info, section_id=section_id)
@@ -567,7 +583,12 @@ def tugua_download(url, dir="", date=None):
 			assert (subtitle), "Content Error!\n  Expect section {} but no text found in '{}'.".format(number_count, section)
 		subtitle_match = subtitle_regex.match(subtitle)
 		assert (subtitle_match), "Content Error!\n  Expect subtitle '【{}】' but actual is '{}'.".format(number_count, subtitle)
-		if (int(subtitle_match.group(1)) != number_count):
+		curr_id = subtitle_match.group(1)
+		if (len(curr_id) > 0):
+			curr_id = int(curr_id)
+		else:
+			curr_id = 0
+		if (curr_id != number_count):
 			logger.warn("Subtitle number mismatch, expect {} but actual is {}.".format(number_count, subtitle_match.group(1)))
 			number_error = number_error + 1
 		subtitle.replace_with(dest.new_string("【{:02}】{}".format(number_count, subtitle_match.group(2).strip())))
@@ -587,7 +608,8 @@ def tugua_download(url, dir="", date=None):
 	# separate extra, ad and epilogue
 	tag = sections[len(sections)-1]
 	temp = []
-	epi_regex = re.compile(r"^来源：\s*喷嚏网\s*综合编辑$")
+	epi_regex = re.compile(r"^(来源：\s*喷嚏网\s*(综合编辑|\(海外访问，请加：\s*https\s*\))|友情提示：请各位河蟹评论。道理你懂的)$")
+	epi = None
 	for child in tag.children:
 		ch = child.contents[0]
 		if (isinstance(ch, Tag)) and ((ch.name == "img") or (ch.name == "embed")):
@@ -603,10 +625,10 @@ def tugua_download(url, dir="", date=None):
 		if (config["CORRECTION"].getboolean("PromptOnUnsure")):
 			input("Continue? ")
 	extra_tag = dest.new_tag("div")
-	for t in temp[:len(temp)-1]:
-		extra_tag.append(t.extract())
 	ad_tag = dest.new_tag("div")
 	if (len(temp) > 0):
+		for t in temp[:len(temp)-1]:
+			extra_tag.append(t.extract())
 		ad_tag.append(temp[len(temp)-1].extract())
 	epilogue_tag = dest.new_tag("div")
 	while(epi):
@@ -644,7 +666,7 @@ def tugua_download(url, dir="", date=None):
 		dest_file.write(dest.prettify().encode(config["TUGUA"]["DestEncoding"]))
 	return
 
-def catalogue_analyze(url, dir="", choice=""):
+def catalogue_analyze(url, dir="", choice=None):
 	'''\Analyze tugua catalogue page at [url:str] and download all into [dir:str].
 	Return int - how many tugua downloaded
 	'''
@@ -740,18 +762,23 @@ if __name__ == "__main__":
 		handler.setLevel(logging.NOTSET)
 		logger.addHandler(handler)
 	# check arguments
-	if (len(sys.argv) > 2):
-		logger.fatal("Usage: {} [date_string]".format(argv[0]))
+	if (len(sys.argv) > 3):
+		logger.fatal("Usage: {} [date_string] [url_string]".format(argv[0]))
 		exit(1)
-	if (len(sys.argv) == 2):
-		choice = sys.argv[1]
-	else:
-		choice = ""
+	date = None
+	url = None
+	if (len(sys.argv) > 2):
+		url = sys.argv[2]
+	if (len(sys.argv) > 1):
+		date = sys.argv[1]
 	# downloading
 	try:
-		count = catalogue_analyze(config["TUGUA"]["CatalogURL"], "", choice)
+		if (date and url):
+			tugua_download(url, date=date)
+			count = 1
+		else:
+			count = catalogue_analyze(config["TUGUA"]["CatalogURL"], choice=date)
 		logger.info("Totally {} tugua downloaded.".format(count))
-		#tugua_download("http://www.dapenti.com/blog/more.asp?name=xilei&id=86617", date="20140130")
 	except:
 		logger.critical("!!! Exception occurred !!!", exc_info=True)
 	logger.info("--------------------------------")
