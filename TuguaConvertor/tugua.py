@@ -1,4 +1,22 @@
 #!/usr/bin/python3
+# -*- coding:utf-8 -*-
+
+import os
+import sys
+import datetime
+import re
+import logging
+import pickle
+import urllib.request
+import socket
+from bs4 import BeautifulSoup
+from bs4.element import Tag
+from bs4.element import NavigableString
+from bs4.element import Comment
+from configparser import ConfigParser
+from PIL import Image
+
+
 # global variables
 config = None
 logger = None
@@ -10,8 +28,6 @@ def get_py_path():
 	Get the path of current running python script.
 	Return: str
 	'''
-	import os
-	import sys
 	path = os.path.realpath(os.path.abspath(sys.argv[0]))
 	if os.path.isdir(path):
 		return path
@@ -34,17 +50,15 @@ def switch_url(url):
 		url = url.replace(key, urlswitch[key])
 	return url
 
-def down_url(url, path):
+def down_url(url, path, override=None):
 	'''\
 	Download a web page [url:str] and save to file with [path:str].
 	Return: None
 	'''
-	import os
-	import urllib.request
-	import socket
-	
 	url = switch_url(url)
-	if (os.path.isfile(path)) and (os.path.getsize(path) > 0) and (not config["NETWORK"].getboolean("OverrideFile")):
+	if (override == None):
+		override = config["NETWORK"].getboolean("OverrideFile")
+	if (os.path.isfile(path)) and (os.path.getsize(path) > 0) and (not override):
 		logger.info("File {} already exists, skip downloading.".format(path))
 		return
 	logger.info("Downloading {} to {} ...".format(url, path))
@@ -64,10 +78,6 @@ def tugua_analyze(tag_src, soup_tmpl, stop_func=None):
 	Return: bs4.element.Tag - dest tag converted
 	Return: bs4.element.Tag - src tag stopped
 	'''
-	from bs4 import BeautifulSoup
-	from bs4.element import Tag
-	from bs4.element import NavigableString
-	from bs4.element import Comment
 	tag_start = tag_src
 	tag_stop = None
 	
@@ -95,7 +105,6 @@ def tugua_analyze(tag_src, soup_tmpl, stop_func=None):
 		if (not style):
 			return (width, height)
 		style = style.lower()
-		import re
 		if (not width):
 			match = re.search(r"(^|[^\w\-])width\s*:\s*(\d+)\s*(px|em|ex|in|cm|mm|pt|pc)?([^\w\-]|$)", style)
 			if (match):
@@ -232,7 +241,6 @@ def tugua_analyze(tag_src, soup_tmpl, stop_func=None):
 		assert (isinstance(tag, Tag)) and (tag.name == "iframe"), "Tag Error!\n  Expect 'iframe' but actual is '{}'.".format(tag)
 		(width, height) = get_obj_size(tag)
 		src = tag.get("src")
-		import re
 		if (re.match(r"(https?//)?(\S+\.)?(youku.com|tudou.com|56.com|video.qq.com)/", src)):
 			result = soup_tmpl.new_tag("embed")
 			result["type"] = "application/x-shockwave-flash"
@@ -325,11 +333,6 @@ def tugua_format(tag_src, soup_tmpl, img_dir="", img_info={}, section_id="", has
 	It returns a new node with soup template [soup_tmpl:bs4.BeautifulSoup].
 	Return: bs4.element.Tag
 	'''
-	import re
-	from bs4 import BeautifulSoup
-	from bs4.element import Tag
-	from bs4.element import NavigableString
-	
 	dest = soup_tmpl.new_tag("div")
 	if (section_id):
 		dest["id"] = section_id
@@ -382,7 +385,6 @@ def tugua_format(tag_src, soup_tmpl, img_dir="", img_info={}, section_id="", has
 					ext = img_format_map[ext]
 				img_path = os.path.join(img_dir, "{}_{:02}.{}".format(section_id, img_info["count"]+1, ext))
 				down_url(tag["src"], img_path)
-				from PIL import Image
 				try:
 					img = Image.open(img_path)
 					format = img.format
@@ -476,13 +478,6 @@ def tugua_download(url, dir="", date=None):
 	It will create a new folder named "YYYYmmdd" and store converted file into it, and store the original html file into "src" folder.
 	Return: None
 	'''
-	import os
-	import re
-	import datetime
-	from bs4 import BeautifulSoup
-	from bs4.element import Tag
-	from bs4.element import NavigableString
-	
 	# prepare source directory
 	if (not date):
 		date = datetime.date.today()
@@ -598,13 +593,26 @@ def tugua_download(url, dir="", date=None):
 	if (not os.path.isdir(dest_dir)):
 		os.makedirs(dest_dir)
 	os.chdir(dest_dir)
-	# format sections & download images
-	img_info = {}
+	# load img_info from tmp file
+	tmp_path = os.path.join(src_dir, config["TUGUA"]["TmpFile"])
+	if (os.path.isfile(tmp_path)) and (os.path.getsize(tmp_path) > 0):
+		with open(tmp_path, "rb") as tmp_file:
+			tmp_data = pickle.loads(tmp_file.read())
+	else:
+		tmp_data = {date_str:{}}
+	img_info = tmp_data[date_str]
 	img_info["count"] = 0
-	prologue = tugua_format(prologue, dest, img_info=img_info)
-	for index in range(len(sections)):
-		img_info["count"] = 0
-		sections[index] = tugua_format(sections[index], dest, img_info=img_info, section_id="{:02}".format(index+1), has_subtitle=True)
+	# format sections & download images
+	try:
+		prologue = tugua_format(prologue, dest, img_info=img_info)
+		for index in range(len(sections)):
+			img_info["count"] = 0
+			sections[index] = tugua_format(sections[index], dest, img_info=img_info, section_id="{:02}".format(index+1), has_subtitle=True)
+	finally:
+		# store img_info into tmp file
+		with open(tmp_path, "wb") as tmp_file:
+			tmp_data[date_str] = img_info
+			tmp_file.write(pickle.dumps(tmp_data))
 	# separate extra, ad and epilogue
 	tag = sections[len(sections)-1]
 	temp = []
@@ -664,17 +672,16 @@ def tugua_download(url, dir="", date=None):
 	with open(dest_path, "wb") as dest_file:
 		logger.info("Saving file '{}' ...".format(dest_path))
 		dest_file.write(dest.prettify().encode(config["TUGUA"]["DestEncoding"]))
+	# delete tmp record when complete
+	del tmp_data[date_str]
+	with open(tmp_path, "wb") as tmp_file:
+		tmp_file.write(pickle.dumps(tmp_data))
 	return
 
 def catalogue_analyze(url, dir="", choice=None):
 	'''\Analyze tugua catalogue page at [url:str] and download all into [dir:str].
 	Return int - how many tugua downloaded
 	'''
-	import os
-	import re
-	import datetime
-	from bs4 import BeautifulSoup
-	
 	# prepare directory
 	dir = os.path.realpath(os.path.abspath(dir))
 	if (not os.path.isdir(dir)):
@@ -730,11 +737,7 @@ def catalogue_analyze(url, dir="", choice=None):
 
 
 if __name__ == "__main__":
-	import os
-	import sys
-	import datetime
 	# configuration
-	from configparser import ConfigParser
 	config = ConfigParser()
 	cwd = get_py_path()
 	os.chdir(cwd)
@@ -748,7 +751,6 @@ if __name__ == "__main__":
 	if (config["NETWORK"]["DownloadProxy"]):
 		os.environ["http_proxy"] = config["NETWORK"]["DownloadProxy"]
 	# set logger
-	import logging
 	logger = logging.getLogger()
 	logger.setLevel(logging.NOTSET)
 	formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
