@@ -599,7 +599,9 @@ def tugua_download(url, dir="", date=None):
 		with open(tmp_path, "rb") as tmp_file:
 			tmp_data = pickle.loads(tmp_file.read())
 	else:
-		tmp_data = {date_str:{}}
+		tmp_data = {}
+	if (date_str not in tmp_data):
+		tmp_data[date_str] = {}
 	img_info = tmp_data[date_str]
 	img_info["count"] = 0
 	# format sections & download images
