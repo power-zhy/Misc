@@ -384,48 +384,52 @@ def tugua_format(tag_src, soup_tmpl, img_dir="", img_info={}, section_id="", has
 				if (ext in img_format_map):
 					ext = img_format_map[ext]
 				img_path = os.path.join(img_dir, "{}_{:02}.{}".format(section_id, img_info["count"]+1, ext))
-				down_url(tag["src"], img_path)
-				try:
-					img = Image.open(img_path)
-					format = img.format
-					if (format):
-						format = format.lower()
-					if (format in img_format_map):
-						format = img_format_map[format]
-					if (not format):
-						logger.error("Can't recognize the format of image '{}'.".format(img_path))
-						if (config["CORRECTION"].getboolean("PromptOnUnsure")):
-							input("Continue? ")
-					if (format != ext):
-						new_img_path = os.path.join(img_dir, "{}_{:02}.{}".format(section_id, img_info["count"]+1, format))
-						logger.error("Image format mismatch, Renaming '{}' to '{}'.".format(img_path, new_img_path))
-						if (config["CORRECTION"].getboolean("PromptOnUnsure")):
-							input("Continue? ")
-						os.rename(img_path, new_img_path)
-						ext = format
-						img_path = new_img_path
-					(img_width, img_height) = img.size
-					is_face = (img_width <= config["CORRECTION"].getint("FaceImgWidthMax")) and (img_height <= config["CORRECTION"].getint("FaceImgHeightMax"))
-					del img
-				except OSError:
-					logger.error("Can't recognize image file '{}', default to non-face image.".format(img_path))
-					is_face = False
-					input("Continue? ")
-				if (is_face):
-					new_img_path = os.path.join(img_dir, "{}_{:02}.{}".format(config["IDENT"]["Face"], len(img_info), ext))
-					logger.info("Face image found, Renaming '{}' to '{}'.".format(img_path, new_img_path))
-					os.rename(img_path, new_img_path)
-					img_path = new_img_path
-					img_info[tag["src"]] = img_path
-					tag["src"] = img_path
-					tag["class"] = config["IDENT"]["Face"]
-					complete_last_string()
-					last_para.append(tag)
+				url = tag["src"].strip()
+				if (url.startswith("file:")):
+					logger.warn("Illegal image url '{}', ignored.".format(url))
 				else:
-					img_info["count"] += 1
-					tag["src"] = img_path
-					complete_last_para()
-					dest.append(tag.wrap(soup_tmpl.new_tag("p")))
+					down_url(url, img_path)
+					try:
+						img = Image.open(img_path)
+						format = img.format
+						if (format):
+							format = format.lower()
+						if (format in img_format_map):
+							format = img_format_map[format]
+						if (not format):
+							logger.error("Can't recognize the format of image '{}'.".format(img_path))
+							if (config["CORRECTION"].getboolean("PromptOnUnsure")):
+								input("Continue? ")
+						if (format != ext):
+							new_img_path = os.path.join(img_dir, "{}_{:02}.{}".format(section_id, img_info["count"]+1, format))
+							logger.error("Image format mismatch, Renaming '{}' to '{}'.".format(img_path, new_img_path))
+							if (config["CORRECTION"].getboolean("PromptOnUnsure")):
+								input("Continue? ")
+							os.rename(img_path, new_img_path)
+							ext = format
+							img_path = new_img_path
+						(img_width, img_height) = img.size
+						is_face = (img_width <= config["CORRECTION"].getint("FaceImgWidthMax")) and (img_height <= config["CORRECTION"].getint("FaceImgHeightMax"))
+						del img
+					except OSError:
+						logger.error("Can't recognize image file '{}', default to non-face image.".format(img_path))
+						is_face = False
+						input("Continue? ")
+					if (is_face):
+						new_img_path = os.path.join(img_dir, "{}_{:02}.{}".format(config["IDENT"]["Face"], len(img_info), ext))
+						logger.info("Face image found, Renaming '{}' to '{}'.".format(img_path, new_img_path))
+						os.rename(img_path, new_img_path)
+						img_path = new_img_path
+						img_info[tag["src"]] = img_path
+						tag["src"] = img_path
+						tag["class"] = config["IDENT"]["Face"]
+						complete_last_string()
+						last_para.append(tag)
+					else:
+						img_info["count"] += 1
+						tag["src"] = img_path
+						complete_last_para()
+						dest.append(tag.wrap(soup_tmpl.new_tag("p")))
 		elif (tag.name == "a"):
 			temp = tugua_format(tag, soup_tmpl, img_dir=img_dir, img_info=img_info, section_id=section_id)
 			link_contents = []
