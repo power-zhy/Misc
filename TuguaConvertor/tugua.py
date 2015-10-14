@@ -720,6 +720,7 @@ def catalogue_analyze(url, dir="", choice=None):
 	# find tugua and start downloading
 	pre_url = re.search(r"^(\S+/)[^/]*$", url).group(1)
 	title_regex = re.compile(r"^【喷嚏图卦(\d{8})】\S.*$")
+	min_date = config["TUGUA"]["MinDate"]
 	count = 0
 	for item in catalog.find_all("a", href=True, text=title_regex):
 		href = item["href"]
@@ -729,6 +730,8 @@ def catalogue_analyze(url, dir="", choice=None):
 		tugua_title = title_match.group(0).strip()
 		tugua_date = title_match.group(1)
 		if (choice and choice != tugua_date):
+			continue
+		if (min_date and min_date > tugua_date):
 			continue
 		tugua_dir = os.path.join(dir, tugua_date)
 		#tugua_index = os.path.join(tugua_dir, "{}.html".format(tugua_title))
