@@ -45,6 +45,7 @@ def get_absolute_url(url):
 	url = urllib.parse.urljoin(urlsrc, url)
 	res = urllib.parse.urlparse(url)
 	path = os.path.normpath(res.path)
+	path = path.replace("\\", "/")
 	return urllib.parse.urlunparse((res.scheme, res.netloc, path, res.params, res.query, res.fragment))
 
 def switch_url(url):
