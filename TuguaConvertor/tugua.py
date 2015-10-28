@@ -8,6 +8,7 @@ import re
 import logging
 import pickle
 import urllib.request
+import urllib.parse
 import socket
 from bs4 import BeautifulSoup
 from bs4.element import Tag
@@ -20,6 +21,7 @@ from PIL import Image
 # global variables
 config = None
 logger = None
+urlsrc = None
 urlswitch = None
 
 
@@ -36,13 +38,22 @@ def get_py_path():
 	else:
 		return None
 
+def get_absolute_url(url):
+	global urlsrc
+	if (urlsrc is None):
+		return url
+	url = urllib.parse.urljoin(urlsrc, url)
+	res = urllib.parse.urlparse(url)
+	path = os.path.normpath(res.path)
+	return urllib.parse.urlunparse((res.scheme, res.netloc, path, res.params, res.query, res.fragment))
+
 def switch_url(url):
 	global urlswitch
 	if (urlswitch is None):
 		urlswitch = {}
-		data = config["NETWORK"]["URLSwitch"].strip()
+		data = config["NETWORK"]["URLSwitch"]
 		if (data):
-			for switch in data.split(","):
+			for switch in data.strip().split(","):
 				pair = switch.split("->")
 				if (len(pair) == 2):
 					urlswitch[pair[0].strip()] = pair[1].strip()
@@ -55,6 +66,7 @@ def down_url(url, path, override=None):
 	Download a web page [url:str] and save to file with [path:str].
 	Return: None
 	'''
+	url = get_absolute_url(url)
 	url = switch_url(url)
 	if (override == None):
 		override = config["NETWORK"].getboolean("OverrideFile")
@@ -70,6 +82,22 @@ def down_url(url, path, override=None):
 		except socket.timeout:
 			continue
 	return
+
+def parse_html(data):
+	result = None
+	encode = config["TUGUA"]["SrcEncoding"]
+	parser = config["TUGUA"]["HtmlParser"]
+	if (encode):
+		for enc in encode.split():
+			try:
+				result = BeautifulSoup(data.decode(enc), parser)
+				logger.info("Decoding success by '{}'".format(enc))
+				break
+			except Exception as e:
+				logger.warn("Try to decode using '{}' failed: {}".format(enc, str(e)))
+	if (not result):
+		result = BeautifulSoup(data, parser)
+	return result
 
 def tugua_analyze(tag_src, soup_tmpl, stop_func=None):
 	'''\
@@ -155,6 +183,7 @@ def tugua_analyze(tag_src, soup_tmpl, stop_func=None):
 					src = src + "?" + vars
 			result = soup_tmpl.new_tag("embed")
 			result["type"] = "application/x-shockwave-flash"
+			src = get_absolute_url(src)
 			result["src"] = src
 			if (width):
 				result["width"] = width
@@ -173,6 +202,7 @@ def tugua_analyze(tag_src, soup_tmpl, stop_func=None):
 					if (name == "movie") or (name == "src"):
 						src = value
 			assert (src), "Tag Error!\n  Invalid image url in '{}'.".format(tag)
+			src = get_absolute_url(src)
 			result = soup_tmpl.new_tag("img")
 			result["alt"] = ""
 			result["src"] = src
@@ -197,6 +227,7 @@ def tugua_analyze(tag_src, soup_tmpl, stop_func=None):
 		assert (isinstance(tag, Tag)) and (tag.name == "img"), "Tag Error!\n  Expect 'img' but actual is '{}'.".format(tag)
 		src = tag.get("src")
 		assert (src), "Tag Error!\n  Invalid image url in '{}'.".format(tag)
+		src = get_absolute_url(src)
 		result = soup_tmpl.new_tag("img")
 		result["alt"] = ""
 		result["src"] = src
@@ -207,6 +238,7 @@ def tugua_analyze(tag_src, soup_tmpl, stop_func=None):
 		href = tag.get("href")
 		result = tag_convert(tag, ignore_root = True)
 		if (href) and (result):
+			href = get_absolute_url(href)
 			result.name = "a"
 			result["href"] = href
 		else:
@@ -252,6 +284,7 @@ def tugua_analyze(tag_src, soup_tmpl, stop_func=None):
 			result["allowFullScreen"] = "true"
 			return result
 		elif (src):
+			src = get_absolute_url(src)
 			logger.error("Frame '{}' converted into link.".format(src))
 			if (config["CORRECTION"].getboolean("PromptOnUnsure")):
 				input("Continue? ")
@@ -495,22 +528,15 @@ def tugua_download(url, dir="", date=None):
 		os.makedirs(src_dir)
 	src_path = os.path.join(src_dir, date_str + ".html")
 	# download contents
+	global urlsrc
+	url = url.strip()
+	urlsrc = url
 	down_url(url, src_path)
 	src = None
 	with open(src_path, "rb") as src_file:
 		data = src_file.read()
-		encode = config["TUGUA"]["SrcEncoding"]
-		if (encode):
-			for enc in encode.split():
-				try:
-					src = BeautifulSoup(data.decode(enc))
-					logger.info("Decoding success by '{}'".format(enc))
-					break
-				except Exception as e:
-					logger.warn("Try to decode using '{}' failed: {}".format(enc, str(e)))
-		if (not src):
-			src = BeautifulSoup(data)
-	dest = BeautifulSoup()
+		src = parse_html(data)
+	dest = BeautifulSoup("", config["TUGUA"]["HtmlParser"])
 	# analyze source title and frame
 	title_tag_src = src.find("title")
 	assert (title_tag_src), "No title found!"
@@ -682,6 +708,7 @@ def tugua_download(url, dir="", date=None):
 	del tmp_data[date_str]
 	with open(tmp_path, "wb") as tmp_file:
 		tmp_file.write(pickle.dumps(tmp_data))
+	urlsrc = None
 	return
 
 def catalogue_analyze(url, dir="", choice=None):
@@ -708,15 +735,7 @@ def catalogue_analyze(url, dir="", choice=None):
 	down_url(url, catalog_path)
 	with open(catalog_path, "rb") as catalog_file:
 		data = catalog_file.read()
-		encode = config["TUGUA"]["SrcEncoding"]
-		if (encode):
-			for enc in encode.split():
-				try:
-					catalog = BeautifulSoup(data.decode(enc))
-				except:
-					pass
-		if (not catalog):
-			catalog = BeautifulSoup(data)
+		catalog = parse_html(data)
 	# find tugua and start downloading
 	pre_url = re.search(r"^(\S+/)[^/]*$", url).group(1)
 	title_regex = re.compile(r"^【喷嚏图卦(\d{8})】\S.*$")
