@@ -77,7 +77,9 @@ def down_url(url, path, override=None):
 	logger.info("Downloading {} to {} ...".format(url, path))
 	for retry in range(config["NETWORK"].getint("DownloadMaxRetry")):
 		try:
-			with urllib.request.urlopen(url, timeout=config["NETWORK"].getint("DownloadTimeout")) as url_data, open(path, "wb") as file_data:
+			headers = {"User-Agent": config["NETWORK"]["UserAgent"]}
+			request = urllib.request.Request(url, headers=headers)
+			with urllib.request.urlopen(request, timeout=config["NETWORK"].getint("DownloadTimeout")) as url_data, open(path, "wb") as file_data:
 				file_data.write(url_data.read())
 			break
 		except socket.timeout:
@@ -546,7 +548,7 @@ def tugua_download(url, dir="", date=None):
 	assert (title_match), "No title found!\n  Title tag is '{}'.".format(title)
 	assert (date_str == title_match.group(1)), "Date mismatch!\n  Input is '{}', actual is '{}'.".format(date_str, title_match.group(1))
 	title = title_match.group(0).strip()
-	start_tag_src = src.find(text=re.compile(r"以下内容，有可能引起内心冲突或愤怒等不适症状。"))
+	start_tag_src = src.find(text=re.compile(r"以下内容，有可能引起内心冲突或愤怒等不适症状。|本文转摘的各类事件，均来自于公开发表的国内媒体报道。引用的个人或媒体评论旨在传播各种声音，并不代表我们认同或反对其观点。"))
 	end_tag_src = src.find(text=re.compile(r"友情提示：请各位河蟹评论。道理你懂的"))
 	assert (start_tag_src) and (end_tag_src), "No content found!\n  Start is '{}', end is '{}'.".format(start_tag_src, end_tag_src)
 	if (not end_tag_src.next_element):
