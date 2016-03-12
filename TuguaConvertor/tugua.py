@@ -25,6 +25,12 @@ urlsrc = None
 urlswitch = None
 
 
+def debug_output(s):
+	if (not isinstance(s, str)):
+		s = str(s)
+	s = s.encode("GBK", "ignore").decode("GBK", "ignore")
+	print("[DEBUG] "+ s)
+
 def get_py_path():
 	'''\
 	Get the path of current running python script.
@@ -77,14 +83,16 @@ def down_url(url, path, override=None):
 	logger.info("Downloading {} to {} ...".format(url, path))
 	for retry in range(config["NETWORK"].getint("DownloadMaxRetry")):
 		try:
-			headers = {"User-Agent": config["NETWORK"]["UserAgent"]}
+			headers = {"User-Agent": config["NETWORK"]["UserAgent"], "Referer": config["NETWORK"]["Referer"]}
 			request = urllib.request.Request(url, headers=headers)
 			with urllib.request.urlopen(request, timeout=config["NETWORK"].getint("DownloadTimeout")) as url_data, open(path, "wb") as file_data:
-				file_data.write(url_data.read())
-			break
+				data = url_data.read()
+				if (data):
+					file_data.write(data)
+					return
 		except socket.timeout:
 			continue
-	return
+	logger.error("Download {} to {} failed.".format(url, path))
 
 def parse_html(data):
 	result = None
@@ -93,7 +101,9 @@ def parse_html(data):
 	if (encode):
 		for enc in encode.split():
 			try:
-				result = BeautifulSoup(data.decode(enc), parser)
+				tmp = data.decode(enc)
+				tmp = re.subn("<\s*br\s*>", "<br />", tmp)[0]  # avoid illegal br tag
+				result = BeautifulSoup(tmp, parser)
 				logger.info("Decoding success by '{}'".format(enc))
 				break
 			except Exception as e:
@@ -102,7 +112,7 @@ def parse_html(data):
 		result = BeautifulSoup(data, parser)
 	return result
 
-def tugua_analyze(tag_src, soup_tmpl, stop_func=None):
+def tugua_analyze(tag_src, soup_tmpl, stop_func=None, search_sibling = True):
 	'''\
 	Analyze tugua at specific node [tag_src:bs4.element.Tag], convert it to a new node with soup template [soup_tmpl:bs4.BeautifulSoup].
 	This process stops when [stop_func:(bool)method(tag_src:bs4.element.Tag)] returns True.
@@ -223,7 +233,9 @@ def tugua_analyze(tag_src, soup_tmpl, stop_func=None):
 	
 	def convert_br(tag):
 		assert (isinstance(tag, Tag)) and (tag.name == "br"), "Tag Error!\n  Expect 'br' but actual is '{}'.".format(tag)
-		assert (not tag.contents), "Tag 'br' should have no contents."
+		if (tag.contents):
+			result = tag_convert(tag, ignore_root = True)
+			assert (not result.contents), "Tag 'br' should have no contents."
 		return soup_tmpl.new_tag("br")
 	
 	def convert_img(tag):
@@ -355,7 +367,7 @@ def tugua_analyze(tag_src, soup_tmpl, stop_func=None):
 					tag_dest.append(child)
 			else:
 				tag_dest.append(tag_new)
-		if (tag_stop):
+		if (not search_sibling) or (tag_stop):
 			break
 		while (not tag_src.next_sibling) and (tag_src.parent):
 			tag_src = tag_src.parent
@@ -441,6 +453,8 @@ def tugua_format(tag_src, soup_tmpl, img_dir="", img_info={}, section_id="", has
 							logger.error("Image format mismatch, Renaming '{}' to '{}'.".format(img_path, new_img_path))
 							if (config["CORRECTION"].getboolean("PromptOnUnsure")):
 								input("Continue? ")
+							if (os.path.isfile(new_img_path)):
+								os.remove(new_img_path)
 							os.rename(img_path, new_img_path)
 							ext = format
 							img_path = new_img_path
@@ -454,6 +468,8 @@ def tugua_format(tag_src, soup_tmpl, img_dir="", img_info={}, section_id="", has
 					if (is_face):
 						new_img_path = os.path.join(img_dir, "{}_{:02}.{}".format(config["IDENT"]["Face"], len(img_info), ext))
 						logger.info("Face image found, Renaming '{}' to '{}'.".format(img_path, new_img_path))
+						if (os.path.isfile(new_img_path)):
+							os.remove(new_img_path)
 						os.rename(img_path, new_img_path)
 						img_path = new_img_path
 						img_info[tag["src"]] = img_path
@@ -512,9 +528,9 @@ def tugua_format(tag_src, soup_tmpl, img_dir="", img_info={}, section_id="", has
 		dest["class"] = config["IDENT"]["Section"]
 	return dest
 
-def tugua_download(url, dir="", date=None):
+def tugua_download(url, directory="", date=None):
 	'''\
-	Download tugua of [date:datetime|str] from [url:str], and store into [dir:str].
+	Download tugua of [date:datetime|str] from [url:str], and store into [directory:str].
 	It will create a new folder named "YYYYmmdd" and store converted file into it, and store the original html file into "src" folder.
 	Return: None
 	'''
@@ -525,8 +541,8 @@ def tugua_download(url, dir="", date=None):
 		date_str = date.strftime("%Y%m%d")
 	else:
 		date_str = date
-	dir = os.path.realpath(os.path.abspath(dir))
-	src_dir = os.path.join(dir, config["TUGUA"]["SrcDir"])
+	directory = os.path.realpath(os.path.abspath(directory))
+	src_dir = os.path.join(directory, config["TUGUA"]["SrcDir"])
 	if (not os.path.isdir(src_dir)):
 		os.makedirs(src_dir)
 	src_path = os.path.join(src_dir, date_str + ".html")
@@ -535,10 +551,10 @@ def tugua_download(url, dir="", date=None):
 	url = url.strip()
 	urlsrc = url
 	down_url(url, src_path)
-	src = None
+	data = None
 	with open(src_path, "rb") as src_file:
 		data = src_file.read()
-		src = parse_html(data)
+	src = parse_html(data)
 	dest = BeautifulSoup("", config["TUGUA"]["HtmlParser"])
 	# analyze source title and frame
 	title_tag_src = src.find("title")
@@ -550,6 +566,12 @@ def tugua_download(url, dir="", date=None):
 	title = title_match.group(0).strip()
 	start_tag_src = src.find(text=re.compile(r"以下内容，有可能引起内心冲突或愤怒等不适症状。|本文转摘的各类事件，均来自于公开发表的国内媒体报道。引用的个人或媒体评论旨在传播各种声音，并不代表我们认同或反对其观点。"))
 	end_tag_src = src.find(text=re.compile(r"友情提示：请各位河蟹评论。道理你懂的"))
+	if (not end_tag_src):
+		end_tag_src = src.find(text=re.compile(r"广告联系：dapenti#dapenti.com"))
+		if (end_tag_src):
+			end_tag_src = end_tag_src.find_next(text=re.compile(r"喷嚏网"))
+			while (not end_tag_src.name or end_tag_src.name == "a"):
+				end_tag_src = end_tag_src.parent
 	assert (start_tag_src) and (end_tag_src), "No content found!\n  Start is '{}', end is '{}'.".format(start_tag_src, end_tag_src)
 	if (not end_tag_src.next_element):
 		src.append(dest.new_tag("end"))
@@ -575,10 +597,10 @@ def tugua_download(url, dir="", date=None):
 	# analyze and convert
 	subtitle_regex = re.compile(r"^【(\d{0,2})】(.*)")
 	def stop_func(tag):
-		if (not tag) or (not tag.string):
-			return False
-		if (tag.string.strip() == end_tag_src.strip()):
+		if (tag == end_tag_src):
 			return True
+		elif (not tag) or (not tag.string):
+			return False
 		elif (subtitle_regex.match(tag.string.strip())):
 			return True
 		else:
@@ -589,17 +611,18 @@ def tugua_download(url, dir="", date=None):
 		assert (curr_src), "Unsupported Error!\n  Analysis tag suspended."
 		(section, curr_src) = tugua_analyze(curr_src, dest, stop_func=stop_func)
 		sections.append(section)
-		if (curr_src) and (curr_src.string == end_tag_src):
-			last_tag = dest.new_tag("p")
-			last_tag.string = dest.new_string(end_tag_src)
-			section.append(last_tag)
+		if (curr_src == end_tag_src):
+			(last_tag, _) = tugua_analyze(curr_src, dest, search_sibling=False)
+			if (last_tag.name == "div"):
+				last_tag.name = "p"
+			section.append(last_tag)  # a bit tricky, append it into previous section
 			break
 	# debug
-	'''print("0: {}".format(prologue))
+	'''debug_output("0: {}".format(prologue))
 	count = 0
 	for section in sections:
 		count += 1
-		print("{}: {}".format(count, section))'''
+		debug_output("{}: {}".format(count, section))'''
 	# check section number
 	number_error = 0
 	number_count = 0
@@ -622,7 +645,7 @@ def tugua_download(url, dir="", date=None):
 		subtitle.replace_with(dest.new_string("【{:02}】{}".format(number_count, subtitle_match.group(2).strip())))
 	assert (number_error <= config["CORRECTION"].getint("TitleNumErrorMax")), "Content Error!\n  Too many subtitle number mismatch, totally {} errors.".format(number_error)
 	# prepare destination directory
-	dest_dir = os.path.join(dir, date_str)
+	dest_dir = os.path.join(directory, date_str)
 	if (not os.path.isdir(dest_dir)):
 		os.makedirs(dest_dir)
 	os.chdir(dest_dir)
@@ -649,9 +672,9 @@ def tugua_download(url, dir="", date=None):
 			tmp_data[date_str] = img_info
 			tmp_file.write(pickle.dumps(tmp_data))
 	# separate extra, ad and epilogue
-	tag = sections[len(sections)-1]
+	tag = sections[-1]
 	temp = []
-	epi_regex = re.compile(r"^(来源：\s*喷嚏网\s*(综合编辑|\(海外访问，请加：\s*https\s*\))|友情提示：请各位河蟹评论。道理你懂的)$")
+	epi_regex = re.compile(r"^(友情提示：请各位河蟹评论。道理你懂的)|(\s*喷嚏新浪围脖：\s*@\s*喷嚏官微\s*、\s*@\s*喷嚏意图\s*（新浪）\s*)$")
 	epi = None
 	for child in tag.children:
 		ch = child.contents[0]
@@ -663,16 +686,19 @@ def tugua_download(url, dir="", date=None):
 		else:
 			temp.append(child)
 	assert (epi), "Content Error!\n  No epilogue found in '{}'.".format(tag)
-	if (len(temp) != 2):
-		logger.error("Extra and ad paragraph are not single in '{}'.".format(temp))
-		if (config["CORRECTION"].getboolean("PromptOnUnsure")):
-			input("Continue? ")
 	extra_tag = dest.new_tag("div")
 	ad_tag = dest.new_tag("div")
 	if (len(temp) > 0):
-		for t in temp[:len(temp)-1]:
+		ad_tmp = temp[-1].extract()
+		if (len(ad_tmp.contents) == 1) and (ad_tmp.contents[0].name == "a") and (ad_tmp.contents[0].string.startswith("http")) and (len(temp) > 1):
+			ad_tag.append(temp[-2].extract())
+			ad_tag.append(ad_tmp)
+			temp = temp[:-2]
+		else:
+			ad_tag.append(ad_tmp)
+			temp = temp[:-1]
+		for t in temp:
 			extra_tag.append(t.extract())
-		ad_tag.append(temp[len(temp)-1].extract())
 	epilogue_tag = dest.new_tag("div")
 	while(epi):
 		next_epi = epi.next_sibling
@@ -714,25 +740,25 @@ def tugua_download(url, dir="", date=None):
 	urlsrc = None
 	return
 
-def catalogue_analyze(url, dir="", choice=None):
-	'''\Analyze tugua catalogue page at [url:str] and download all into [dir:str].
+def catalogue_analyze(url, directory="", choice=None):
+	'''\Analyze tugua catalogue page at [url:str] and download all into [directory:str].
 	Return int - how many tugua downloaded
 	'''
 	# prepare directory
-	dir = os.path.realpath(os.path.abspath(dir))
-	if (not os.path.isdir(dir)):
-		os.makedirs(dir)
-	catalog_path = os.path.join(dir, config["TUGUA"]["CatalogFile"])
+	directory = os.path.realpath(os.path.abspath(directory))
+	if (not os.path.isdir(directory)):
+		os.makedirs(directory)
+	catalog_path = os.path.join(directory, config["TUGUA"]["CatalogFile"])
 	if (os.path.isfile(catalog_path)):
 		os.remove(catalog_path)
 	# check existing source if choice is specified
 	if (choice):
-		src_dir = os.path.join(dir, config["TUGUA"]["SrcDir"])
+		src_dir = os.path.join(directory, config["TUGUA"]["SrcDir"])
 		if (not os.path.isdir(src_dir)):
 			os.makedirs(src_dir)
 		src_path = os.path.join(src_dir, choice + ".html")
 		if (os.path.isfile(src_path)) and (os.path.getsize(src_path) > 0):
-			tugua_download("", dir=dir, date=choice)
+			tugua_download("", directory=directory, date=choice)
 			return 1
 	# download catalogue
 	down_url(url, catalog_path)
@@ -755,14 +781,14 @@ def catalogue_analyze(url, dir="", choice=None):
 			continue
 		if (min_date and min_date > tugua_date):
 			continue
-		tugua_dir = os.path.join(dir, tugua_date)
+		tugua_dir = os.path.join(directory, tugua_date)
 		#tugua_index = os.path.join(tugua_dir, "{}.html".format(tugua_title))
 		tugua_index = os.path.join(tugua_dir, config["TUGUA"]["DestFile"])
 		if (os.path.isdir(tugua_dir)) and (os.path.isfile(tugua_index)):
 			continue
 		tugua_url = pre_url+href
 		logger.info("Start Downloading tugua: {} ({}).".format(tugua_title, tugua_url))
-		tugua_download(tugua_url, dir=dir, date=tugua_date)
+		tugua_download(tugua_url, directory=directory, date=tugua_date)
 		count += 1
 	return count
 
@@ -774,10 +800,10 @@ if __name__ == "__main__":
 	os.chdir(cwd)
 	config.read("tugua.cfg")
 	# prepare folder
-	dir=config["TUGUA"]["TuguaDir"]
-	if (not os.path.isdir(dir)):
-		os.makedirs(dir)
-	os.chdir(dir)
+	directory=config["TUGUA"]["TuguaDir"]
+	if (not os.path.isdir(directory)):
+		os.makedirs(directory)
+	os.chdir(directory)
 	# set proxy
 	if (config["NETWORK"]["DownloadProxy"]):
 		os.environ["http_proxy"] = config["NETWORK"]["DownloadProxy"]
