@@ -565,13 +565,11 @@ def tugua_download(url, directory="", date=None):
 	assert (date_str == title_match.group(1)), "Date mismatch!\n  Input is '{}', actual is '{}'.".format(date_str, title_match.group(1))
 	title = title_match.group(0).strip()
 	start_tag_src = src.find(text=re.compile(r"以下内容，有可能引起内心冲突或愤怒等不适症状。|本文转摘的各类事件，均来自于公开发表的国内媒体报道。引用的个人或媒体评论旨在传播各种声音，并不代表我们认同或反对其观点。"))
-	end_tag_src = src.find(text=re.compile(r"友情提示：请各位河蟹评论。道理你懂的"))
-	if (not end_tag_src):
-		end_tag_src = src.find(text=re.compile(r"广告联系：dapenti#dapenti.com"))
-		if (end_tag_src):
-			end_tag_src = end_tag_src.find_next(text=re.compile(r"喷嚏网"))
-			while (not end_tag_src.name or end_tag_src.name == "a"):
-				end_tag_src = end_tag_src.parent
+	end_tag_src = src.find(text=re.compile(r"广告联系：dapenti#dapenti.com"))
+	if (end_tag_src):
+		end_tag_src = end_tag_src.find_next(text=re.compile(r"喷嚏网"))
+		while (not end_tag_src.name or end_tag_src.name == "a"):
+			end_tag_src = end_tag_src.parent
 	assert (start_tag_src) and (end_tag_src), "No content found!\n  Start is '{}', end is '{}'.".format(start_tag_src, end_tag_src)
 	if (not end_tag_src.next_element):
 		src.append(dest.new_tag("end"))
@@ -626,6 +624,7 @@ def tugua_download(url, directory="", date=None):
 	# check section number
 	number_error = 0
 	number_count = 0
+	number_delta = 0
 	for section in sections:
 		number_count = number_count + 1
 		subtitle = section
@@ -639,9 +638,11 @@ def tugua_download(url, directory="", date=None):
 			curr_id = int(curr_id)
 		else:
 			curr_id = 0
-		if (curr_id != number_count):
+		if (curr_id + number_delta != number_count):
 			logger.warn("Subtitle number mismatch, expect {} but actual is {}.".format(number_count, subtitle_match.group(1)))
 			number_error = number_error + 1
+			if (curr_id <= 0):
+				number_delta += 1
 		subtitle.replace_with(dest.new_string("【{:02}】{}".format(number_count, subtitle_match.group(2).strip())))
 	assert (number_error <= config["CORRECTION"].getint("TitleNumErrorMax")), "Content Error!\n  Too many subtitle number mismatch, totally {} errors.".format(number_error)
 	# prepare destination directory

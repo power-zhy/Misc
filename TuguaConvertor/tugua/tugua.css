@@ -1,5 +1,5 @@
 div {
-	margin: 50px 5px 10px;
+	margin: 30px 5px 20px;
 }
 
 p, img {
@@ -8,6 +8,10 @@ p, img {
 
 img.face {
 	margin: auto;
+}
+
+.quick_nav a {
+	margin: 10px 30px;
 }
 
 .title {
