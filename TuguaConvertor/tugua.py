@@ -90,7 +90,7 @@ def down_url(url, path, override=None):
 				if (data):
 					file_data.write(data)
 					return
-		except socket.timeout:
+		except (socket.timeout, urllib.error.URLError):
 			continue
 	logger.error("Download {} to {} failed.".format(url, path))
 
@@ -242,6 +242,8 @@ def tugua_analyze(tag_src, soup_tmpl, stop_func=None, search_sibling = True):
 		assert (isinstance(tag, Tag)) and (tag.name == "img"), "Tag Error!\n  Expect 'img' but actual is '{}'.".format(tag)
 		src = tag.get("src")
 		assert (src), "Tag Error!\n  Invalid image url in '{}'.".format(tag)
+		if src.lower().startswith("file://"):
+			return None
 		src = get_absolute_url(src)
 		result = soup_tmpl.new_tag("img")
 		result["alt"] = ""
@@ -567,7 +569,9 @@ def tugua_download(url, directory="", date=None):
 	start_tag_src = src.find(text=re.compile(r"以下内容，有可能引起内心冲突或愤怒等不适症状。|本文转摘的各类事件，均来自于公开发表的国内媒体报道。引用的个人或媒体评论旨在传播各种声音，并不代表我们认同或反对其观点。"))
 	end_tag_src = src.find(text=re.compile(r"广告联系：dapenti#dapenti.com"))
 	if (end_tag_src):
-		end_tag_src = end_tag_src.find_next(text=re.compile(r"喷嚏网"))
+		tmp = end_tag_src.find_next(text=re.compile(r"喷嚏网"))
+		if (tmp):
+			end_tag_src = tmp
 		while (not end_tag_src.name or end_tag_src.name == "a"):
 			end_tag_src = end_tag_src.parent
 	assert (start_tag_src) and (end_tag_src), "No content found!\n  Start is '{}', end is '{}'.".format(start_tag_src, end_tag_src)
@@ -630,7 +634,7 @@ def tugua_download(url, directory="", date=None):
 		subtitle = section
 		while (not isinstance(subtitle, NavigableString)):
 			subtitle = subtitle.next_element
-			assert (subtitle), "Content Error!\n  Expect section {} but no text found in '{}'.".format(number_count, section)
+			assert (subtitle), "Content Error!\n  Expect section '{}' but no text found in '{}'.".format(number_count, section)
 		subtitle_match = subtitle_regex.match(subtitle)
 		assert (subtitle_match), "Content Error!\n  Expect subtitle '【{}】' but actual is '{}'.".format(number_count, subtitle)
 		curr_id = subtitle_match.group(1)
@@ -638,8 +642,8 @@ def tugua_download(url, directory="", date=None):
 			curr_id = int(curr_id)
 		else:
 			curr_id = 0
-		if (curr_id + number_delta != number_count):
-			logger.warn("Subtitle number mismatch, expect {} but actual is {}.".format(number_count, subtitle_match.group(1)))
+		if (curr_id != number_count and curr_id + number_delta != number_count):
+			logger.warn("Subtitle number mismatch, expect '{}' but actual is '{}'.".format(number_count, subtitle_match.group(1)))
 			number_error = number_error + 1
 			if (curr_id <= 0):
 				number_delta += 1
