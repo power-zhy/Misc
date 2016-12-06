@@ -71,7 +71,7 @@ def switch_url(url):
 def down_url(url, path, override=None):
 	'''\
 	Download a web page [url:str] and save to file with [path:str].
-	Return: None
+	Return: Bool
 	'''
 	url = get_absolute_url(url)
 	url = switch_url(url)
@@ -79,7 +79,7 @@ def down_url(url, path, override=None):
 		override = config["NETWORK"].getboolean("OverrideFile")
 	if (os.path.isfile(path)) and (os.path.getsize(path) > 0) and (not override):
 		logger.info("File {} already exists, skip downloading.".format(path))
-		return
+		return True
 	logger.info("Downloading {} to {} ...".format(url, path))
 	for retry in range(config["NETWORK"].getint("DownloadMaxRetry")):
 		try:
@@ -89,10 +89,11 @@ def down_url(url, path, override=None):
 				data = url_data.read()
 				if (data):
 					file_data.write(data)
-					return
+					return True
 		except (socket.timeout, urllib.error.URLError):
 			continue
 	logger.error("Download {} to {} failed.".format(url, path))
+	return False
 
 def parse_html(data):
 	result = None
@@ -438,35 +439,39 @@ def tugua_format(tag_src, soup_tmpl, img_dir="", img_info={}, section_id="", has
 				if (url.startswith("file:")):
 					logger.warn("Illegal image url '{}', ignored.".format(url))
 				else:
-					down_url(url, img_path)
-					try:
-						img = Image.open(img_path)
-						format = img.format
-						if (format):
-							format = format.lower()
-						if (format in img_format_map):
-							format = img_format_map[format]
-						if (not format):
-							logger.error("Can't recognize the format of image '{}'.".format(img_path))
-							if (config["CORRECTION"].getboolean("PromptOnUnsure")):
-								input("Continue? ")
-						if (format != ext):
-							new_img_path = os.path.join(img_dir, "{}_{:02}.{}".format(section_id, img_info["count"]+1, format))
-							logger.error("Image format mismatch, Renaming '{}' to '{}'.".format(img_path, new_img_path))
-							if (config["CORRECTION"].getboolean("PromptOnUnsure")):
-								input("Continue? ")
-							if (os.path.isfile(new_img_path)):
-								os.remove(new_img_path)
-							os.rename(img_path, new_img_path)
-							ext = format
-							img_path = new_img_path
-						(img_width, img_height) = img.size
-						is_face = (img_width <= config["CORRECTION"].getint("FaceImgWidthMax")) and (img_height <= config["CORRECTION"].getint("FaceImgHeightMax"))
-						del img
-					except OSError:
-						logger.error("Can't recognize image file '{}', default to non-face image.".format(img_path))
-						is_face = False
+					ret = down_url(url, img_path)
+					if not ret:
 						input("Continue? ")
+					is_face = False
+					if ret:
+						try:
+							img = Image.open(img_path)
+							format = img.format
+							if (format):
+								format = format.lower()
+							if (format in img_format_map):
+								format = img_format_map[format]
+							if (not format):
+								logger.error("Can't recognize the format of image '{}'.".format(img_path))
+								if (config["CORRECTION"].getboolean("PromptOnUnsure")):
+									input("Continue? ")
+							if (format != ext):
+								new_img_path = os.path.join(img_dir, "{}_{:02}.{}".format(section_id, img_info["count"]+1, format))
+								logger.error("Image format mismatch, Renaming '{}' to '{}'.".format(img_path, new_img_path))
+								if (config["CORRECTION"].getboolean("PromptOnUnsure")):
+									input("Continue? ")
+								if (os.path.isfile(new_img_path)):
+									os.remove(new_img_path)
+								os.rename(img_path, new_img_path)
+								ext = format
+								img_path = new_img_path
+							(img_width, img_height) = img.size
+							is_face = (img_width <= config["CORRECTION"].getint("FaceImgWidthMax")) and (img_height <= config["CORRECTION"].getint("FaceImgHeightMax"))
+							del img
+						except OSError:
+							logger.error("Can't recognize image file '{}', default to non-face image.".format(img_path))
+							is_face = False
+							input("Continue? ")
 					if (is_face):
 						new_img_path = os.path.join(img_dir, "{}_{:02}.{}".format(config["IDENT"]["Face"], len(img_info), ext))
 						logger.info("Face image found, Renaming '{}' to '{}'.".format(img_path, new_img_path))
@@ -645,8 +650,7 @@ def tugua_download(url, directory="", date=None):
 		if (curr_id != number_count and curr_id + number_delta != number_count):
 			logger.warn("Subtitle number mismatch, expect '{}' but actual is '{}'.".format(number_count, subtitle_match.group(1)))
 			number_error = number_error + 1
-			if (curr_id <= 0):
-				number_delta += 1
+			number_delta = number_count - curr_id
 		subtitle.replace_with(dest.new_string("【{:02}】{}".format(number_count, subtitle_match.group(2).strip())))
 	assert (number_error <= config["CORRECTION"].getint("TitleNumErrorMax")), "Content Error!\n  Too many subtitle number mismatch, totally {} errors.".format(number_error)
 	# prepare destination directory
