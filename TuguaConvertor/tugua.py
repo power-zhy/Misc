@@ -574,7 +574,7 @@ def tugua_download(url, directory="", date=None):
 	start_tag_src = src.find(text=re.compile(r"以下内容，有可能引起内心冲突或愤怒等不适症状。|本文转摘的各类事件，均来自于公开发表的国内媒体报道。引用的个人或媒体评论旨在传播各种声音，并不代表我们认同或反对其观点。"))
 	end_tag_src = src.find(text=re.compile(r"广告联系：dapenti#dapenti.com"))
 	if (end_tag_src):
-		tmp = end_tag_src.find_next(text=re.compile(r"喷嚏网"))
+		tmp = end_tag_src.find_next(text=re.compile(r"^喷嚏网"))
 		if (tmp):
 			end_tag_src = tmp
 		while (not end_tag_src.name or end_tag_src.name == "a"):
