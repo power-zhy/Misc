@@ -557,7 +557,8 @@ def tugua_download(url, directory="", date=None):
 	global urlsrc
 	url = url.strip()
 	urlsrc = url
-	down_url(url, src_path)
+	if not down_url(url, src_path):
+		input("Continue? ")
 	data = None
 	with open(src_path, "rb") as src_file:
 		data = src_file.read()
@@ -770,7 +771,8 @@ def catalogue_analyze(url, directory="", choice=None):
 			tugua_download("", directory=directory, date=choice)
 			return 1
 	# download catalogue
-	down_url(url, catalog_path)
+	if not down_url(url, catalog_path):
+		input("Continue? ")
 	with open(catalog_path, "rb") as catalog_file:
 		data = catalog_file.read()
 		catalog = parse_html(data)
