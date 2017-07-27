@@ -447,6 +447,9 @@ def tugua_format(tag_src, soup_tmpl, img_dir="", img_info={}, section_id="", has
 						try:
 							img = Image.open(img_path)
 							format = img.format
+							(img_width, img_height) = img.size
+							is_face = img_width <= config["CORRECTION"].getint("FaceImgWidthMax") and img_height <= config["CORRECTION"].getint("FaceImgHeightMax")
+							del img
 							if format:
 								format = format.lower()
 							if format in img_format_map:
@@ -465,9 +468,6 @@ def tugua_format(tag_src, soup_tmpl, img_dir="", img_info={}, section_id="", has
 								os.rename(img_path, new_img_path)
 								ext = format
 								img_path = new_img_path
-							(img_width, img_height) = img.size
-							is_face = img_width <= config["CORRECTION"].getint("FaceImgWidthMax") and img_height <= config["CORRECTION"].getint("FaceImgHeightMax")
-							del img
 						except OSError:
 							logger.error("Can't recognize image file '{}', default to non-face image.".format(img_path))
 							is_face = False
