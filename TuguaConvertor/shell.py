@@ -177,5 +177,5 @@ def interact_loop(global_var={}, local_var={}):
 		execute(cmd, global_var, local_var)
 
 if __name__ == "__main__":
-	interact_loop()
+	interact_loop(globals(), locals())
 	

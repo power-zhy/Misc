@@ -45,6 +45,12 @@ def get_py_path():
 		return None
 
 def get_absolute_url(url):
+	if url.startswith("data:"):
+		return url
+	if url.startswith("http://http://") or url.startswith("http://https://"):
+		url = url[7:]
+	elif url.startswith("https://http://") or url.startswith("https://https://"):
+		url = url[8:]
 	global urlsrc
 	if urlsrc is None:
 		return url
@@ -387,7 +393,7 @@ def tugua_format(tag_src, soup_tmpl, img_dir="", img_info={}, section_id="", has
 	dest = soup_tmpl.new_tag("div")
 	if section_id:
 		dest["id"] = section_id
-	ext_regex = re.compile(r"\.(\w+)$")
+	ext_regex = re.compile(r"^data:image/(\w+);|\.(\w+)$")
 	img_format_map = {
 		"jpeg": "jpg"
 	}
@@ -427,7 +433,7 @@ def tugua_format(tag_src, soup_tmpl, img_dir="", img_info={}, section_id="", has
 			else:
 				ext_match = ext_regex.search(tag["src"])
 				if ext_match:
-					ext = ext_match.group(1)
+					ext = ext_match.group(1) or ext_match.group(2)
 				else:
 					logger.warn("No extension found for image '{}', default to '{}'.".format(tag["src"], config["CORRECTION"]["DefaultImgExt"]))
 					ext = config["CORRECTION"]["DefaultImgExt"]
@@ -541,6 +547,9 @@ def tugua_download(url, directory="", date=None):
 	It will create a new folder named "YYYYmmdd" and store converted file into it, and store the original html file into "src" folder.
 	Return: None
 	'''
+	head_regex = re.compile(r"以下内容，有可能引起内心冲突或愤怒等不适症状。|本文转摘的各类事件，均来自于公开发表的国内媒体报道。引用的个人或媒体评论旨在传播各种声音，并不代表我们认同或反对其观点。")
+	tail_regex = re.compile(r"(友情提示：请各位河蟹评论。道理你懂的)|(请各位和谐评论，道理你懂的。)|(\s*喷嚏新浪围脖：\s*@\s*喷嚏官微\s*、\s*@\s*喷嚏意图\s*（新浪）\s*)|(广告联系：dapenti#dapenti.com)")
+	epi_regex = re.compile(r"^(友情提示：请各位河蟹评论。道理你懂的)|(请各位和谐评论，道理你懂的。)|(\s*喷嚏新浪围脖：\s*@\s*喷嚏官微\s*、\s*@\s*喷嚏意图\s*（新浪）\s*)$")
 	# prepare source directory
 	if not date:
 		date = datetime.date.today()
@@ -572,14 +581,19 @@ def tugua_download(url, directory="", date=None):
 	assert title_match, "No title found!\n  Title tag is '{}'.".format(title)
 	assert date_str == title_match.group(1), "Date mismatch!\n  Input is '{}', actual is '{}'.".format(date_str, title_match.group(1))
 	title = title_match.group(0).strip()
-	start_tag_src = src.find(text=re.compile(r"以下内容，有可能引起内心冲突或愤怒等不适症状。|本文转摘的各类事件，均来自于公开发表的国内媒体报道。引用的个人或媒体评论旨在传播各种声音，并不代表我们认同或反对其观点。"))
-	end_tag_src = src.find(text=re.compile(r"广告联系：dapenti#dapenti.com"))
+	start_tag_src = src.find(text=head_regex)
+	if start_tag_src:
+		while not start_tag_src.name or start_tag_src.name == "a":
+			start_tag_src = start_tag_src.parent
+	end_tag_src = src.find(text=tail_regex)
 	if end_tag_src:
-		tmp = end_tag_src.find_next(text=re.compile(r"^喷嚏网"))
-		if tmp:
-			end_tag_src = tmp
 		while not end_tag_src.name or end_tag_src.name == "a":
 			end_tag_src = end_tag_src.parent
+		tmp_tag = end_tag_src.next_sibling
+		while tmp_tag:
+			if not isinstance(tmp_tag, NavigableString) and tail_regex.match(tmp_tag.get_text()):
+				end_tag_src = tmp_tag
+			tmp_tag = tmp_tag.next_sibling
 	assert start_tag_src and end_tag_src, "No content found!\n  Start is '{}', end is '{}'.".format(start_tag_src, end_tag_src)
 	if not end_tag_src.next_element:
 		src.append(dest.new_tag("end"))
@@ -691,7 +705,6 @@ def tugua_download(url, directory="", date=None):
 	# separate extra, ad and epilogue
 	tag = sections[-1]
 	temp = []
-	epi_regex = re.compile(r"^(友情提示：请各位河蟹评论。道理你懂的)|(\s*喷嚏新浪围脖：\s*@\s*喷嚏官微\s*、\s*@\s*喷嚏意图\s*（新浪）\s*)$")
 	epi = None
 	for child in tag.children:
 		ch = child.contents[0]
