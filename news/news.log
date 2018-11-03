@@ -1,0 +1,59 @@
+2018-10-31 02:29:45 10064 INFO [scrapy.utils.log]: Scrapy 1.5.1 started (bot: news)
+2018-10-31 02:29:45 10064 INFO [scrapy.utils.log]: Versions: lxml 4.1.1.0, libxml2 2.9.5, cssselect 1.0.3, parsel 1.5.1, w3lib 1.19.0, Twisted 18.9.0, Python 2.7.12 (v2.7.12:d33e0cf91556, Jun 27 2016, 15:19:22) [MSC v.1500 32 bit (Intel)], pyOpenSSL 18.0.0 (OpenSSL 1.1.0i  14 Aug 2018), cryptography 2.3.1, Platform Windows-7-6.1.7601-SP1
+2018-10-31 02:29:45 10064 INFO [scrapy.crawler]: Overridden settings: {'NEWSPIDER_MODULE': 'news.spiders', 'ROBOTSTXT_OBEY': True, 'LOG_LEVEL': 20, 'SPIDER_MODULES': ['news.spiders'], 'LOG_ENCODING': 'UTF8', 'BOT_NAME': 'news', 'EDITOR': 'D:\\Softwares\\Notepad++\\notepad++.exe', 'LOG_FORMAT': '%(asctime)s %(thread)d %(levelname)s [%(name)s]: %(message)s', 'LOG_FILE': 'E:\\work\\news\\news.log'}
+2018-10-31 02:29:45 10064 INFO [scrapy.middleware]: Enabled extensions:
+['scrapy.extensions.logstats.LogStats',
+ 'scrapy.extensions.telnet.TelnetConsole',
+ 'scrapy.extensions.corestats.CoreStats']
+2018-10-31 02:29:45 10064 INFO [scrapy.middleware]: Enabled downloader middlewares:
+['scrapy.downloadermiddlewares.robotstxt.RobotsTxtMiddleware',
+ 'scrapy.downloadermiddlewares.httpauth.HttpAuthMiddleware',
+ 'scrapy.downloadermiddlewares.downloadtimeout.DownloadTimeoutMiddleware',
+ 'scrapy.downloadermiddlewares.defaultheaders.DefaultHeadersMiddleware',
+ 'scrapy.downloadermiddlewares.useragent.UserAgentMiddleware',
+ 'scrapy.downloadermiddlewares.retry.RetryMiddleware',
+ 'scrapy.downloadermiddlewares.redirect.MetaRefreshMiddleware',
+ 'scrapy.downloadermiddlewares.httpcompression.HttpCompressionMiddleware',
+ 'scrapy.downloadermiddlewares.redirect.RedirectMiddleware',
+ 'scrapy.downloadermiddlewares.cookies.CookiesMiddleware',
+ 'scrapy.downloadermiddlewares.httpproxy.HttpProxyMiddleware',
+ 'scrapy.downloadermiddlewares.stats.DownloaderStats']
+2018-10-31 02:29:45 10064 INFO [scrapy.middleware]: Enabled spider middlewares:
+['scrapy.spidermiddlewares.httperror.HttpErrorMiddleware',
+ 'scrapy.spidermiddlewares.offsite.OffsiteMiddleware',
+ 'scrapy.spidermiddlewares.referer.RefererMiddleware',
+ 'scrapy.spidermiddlewares.urllength.UrlLengthMiddleware',
+ 'scrapy.spidermiddlewares.depth.DepthMiddleware']
+2018-10-31 02:29:45 10064 INFO [scrapy.middleware]: Enabled item pipelines:
+['news.pipelines.NewsPipeline']
+2018-10-31 02:29:45 10064 INFO [scrapy.core.engine]: Spider opened
+2018-10-31 02:29:45 10064 INFO [scrapy.extensions.logstats]: Crawled 0 pages (at 0 pages/min), scraped 0 items (at 0 items/min)
+2018-10-31 02:29:48 10064 INFO [society]: Start processing https://www.wuxiareview.com/archives/3045/ (驱散城市的幻象) with 8 images.
+2018-10-31 02:29:48 10064 WARNING [scrapy.pipelines.files]: File (code: 404): Error downloading file from <GET http://img.3ygk.com/static/zst/img/null> referred in <None>
+2018-10-31 02:29:48 10064 INFO [scrapy.core.engine]: Closing spider (finished)
+2018-10-31 02:29:49 10064 INFO [scrapy.statscollectors]: Dumping Scrapy stats:
+{'downloader/request_bytes': 1316,
+ 'downloader/request_count': 5,
+ 'downloader/request_method_count/GET': 5,
+ 'downloader/response_bytes': 71850,
+ 'downloader/response_count': 5,
+ 'downloader/response_status_count/200': 3,
+ 'downloader/response_status_count/404': 2,
+ 'file_count': 7,
+ 'file_status_count/uptodate': 7,
+ 'finish_reason': 'finished',
+ 'finish_time': datetime.datetime(2018, 10, 30, 18, 29, 48, 661000),
+ 'item_scraped_count': 1,
+ 'log_count/INFO': 8,
+ 'log_count/WARNING': 1,
+ 'request_depth_max': 1,
+ 'response_received_count': 5,
+ 'scheduler/dequeued': 2,
+ 'scheduler/dequeued/memory': 2,
+ 'scheduler/enqueued': 2,
+ 'scheduler/enqueued/memory': 2,
+ 'start_time': datetime.datetime(2018, 10, 30, 18, 29, 45, 684000)}
+2018-10-31 02:29:49 10064 INFO [scrapy.core.engine]: Spider closed (finished)
+2018-10-31 02:29:49 10064 WARNING [society]: 1/8 image download failed in https://www.wuxiareview.com/archives/3045/ (新潮沉思录:驱散城市的幻象).
+2018-10-31 02:29:49 10064 WARNING [society]: Error messages: ['download-error']
+2018-10-31 02:29:49 10064 INFO [society]: 1401 url history saved.
