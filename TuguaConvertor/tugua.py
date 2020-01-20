@@ -87,17 +87,22 @@ def down_url(url, path, override=None):
 		logger.info("File {} already exists, skip downloading.".format(path))
 		return True
 	logger.info("Downloading {} to {} ...".format(url, path))
-	for retry in range(config["NETWORK"].getint("DownloadMaxRetry")):
+	headers = {"User-Agent": config["NETWORK"]["UserAgent"], "Referer": config["NETWORK"]["Referer"]}
+	for _ in range(config["NETWORK"].getint("DownloadMaxRetry")):
 		try:
-			headers = {"User-Agent": config["NETWORK"]["UserAgent"], "Referer": config["NETWORK"]["Referer"]}
 			request = urllib.request.Request(url, headers=headers)
 			with urllib.request.urlopen(request, timeout=config["NETWORK"].getint("DownloadTimeout")) as url_data, open(path, "wb") as file_data:
 				data = url_data.read()
 				if data:
 					file_data.write(data)
 					return True
-		except (socket.timeout, urllib.error.URLError):
+		except socket.timeout:
 			continue
+		except urllib.error.URLError as err:
+			if isinstance(err, urllib.error.HTTPError) and err.code == 403 and "Referer" in headers:
+				del headers["Referer"]
+			else:
+				logger.warn("Download error: {}".format(str(err)))
 	logger.error("Download {} to {} failed.".format(url, path))
 	return False
 
@@ -109,7 +114,7 @@ def parse_html(data):
 		for enc in encode.split():
 			try:
 				tmp = data.decode(enc)
-				tmp = re.subn("<\s*br\s*>", "<br />", tmp)[0]  # avoid illegal br tag
+				tmp = re.subn(r"<\s*br\s*>", "<br />", tmp)[0]  # avoid illegal br tag
 				result = BeautifulSoup(tmp, parser)
 				logger.info("Decoding success by '{}'".format(enc))
 				break
@@ -541,7 +546,7 @@ def tugua_format(tag_src, soup_tmpl, img_dir="", img_info={}, section_id="", has
 		dest["class"] = config["IDENT"]["Section"]
 	return dest
 
-def tugua_download(url, directory="", date=None):
+def tugua_download(url, directory="", date=None, orig_url=None):
 	'''\
 	Download tugua of [date:datetime|str] from [url:str], and store into [directory:str].
 	It will create a new folder named "YYYYmmdd" and store converted file into it, and store the original html file into "src" folder.
@@ -748,7 +753,7 @@ def tugua_download(url, directory="", date=None):
 	title_tag["class"] = config["IDENT"]["Title"]
 	title_tag.append(dest.new_tag("p"))
 	title_tag.p.append(dest.new_tag("a"))
-	title_tag.p.a["href"] = url
+	title_tag.p.a["href"] = orig_url or url
 	title_tag.p.a.string = title
 	# regroup
 	body_tag_dest.append(title_tag)
@@ -771,7 +776,8 @@ def tugua_download(url, directory="", date=None):
 	return
 
 def catalogue_analyze(url, directory="", choice=None):
-	'''\Analyze tugua catalogue page at [url:str] and download all into [directory:str].
+	'''\
+	Analyze tugua catalogue page at [url:str] and download all into [directory:str].
 	Return int - how many tugua downloaded
 	'''
 	# prepare directory
@@ -852,11 +858,16 @@ if __name__ == "__main__":
 		handler.setLevel(logging.NOTSET)
 		logger.addHandler(handler)
 	# check arguments
-	if len(sys.argv) > 3:
-		logger.fatal("Usage: {} [date_string] [url_string]".format(argv[0]))
+	if len(sys.argv) > 4:
+		logger.fatal("Usage: {} [date_string] [url_string] [orig_url_string]".format(sys.argv[0]))
 		exit(1)
 	date = None
 	url = None
+	orig_url = None
+	if len(sys.argv) > 3:
+		orig_url = sys.argv[3]
+		if orig_url.isdigit():
+			orig_url = config["TUGUA"]["TuguaURLPrefix"] + orig_url
 	if len(sys.argv) > 2:
 		url = sys.argv[2]
 	if len(sys.argv) > 1:
@@ -864,7 +875,7 @@ if __name__ == "__main__":
 	# downloading
 	try:
 		if date and url:
-			tugua_download(url, date=date)
+			tugua_download(url, date=date, orig_url=orig_url)
 			count = 1
 		else:
 			count = catalogue_analyze(config["TUGUA"]["CatalogURL"], choice=date)
