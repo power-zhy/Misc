@@ -76,20 +76,20 @@ function insertEmbedFrame() {
 
 function insertQuickNav() {
 	var addDate = function(dateStr, daysDelta) {
-		var date = new Date(dateStr.substr(0, 4) + "." + dateStr.substr(4, 2) + "." + dateStr.substr(6, 2));
+		var date = new Date(dateStr.substr(0, 4) + "/" + dateStr.substr(4, 2) + "/" + dateStr.substr(6, 2));
 		var tmp = date.valueOf() + daysDelta * 24 * 60 * 60 * 1000;
 		date = new Date(tmp);
 		return date.Format("yyyyMMdd");
 	};
-	var path = window.location.pathname;
-	if (path[path.length-1] == '/')
-		path = path.substr(0, path.length-1);
-	path = path.substr(path.length-8, 8);
-	var pathPrev = addDate(path, -1);
-	var pathNext = addDate(path, 1);
+	date = $("title").text().match(/\d{8}/)[0]
+	var datePrev = addDate(date, -1);
+	var dateNext = addDate(date, 1);
+	var path = window.location.href;
+	var pathPrev = path.replace(date, datePrev);
+	var pathNext = path.replace(date, dateNext);
 	var $html = $("<div>").addClass("quick_nav");
-	$html.append($("<a>").attr("href", "../" + pathPrev).text(prev_str));
-	$html.append($("<a>").attr("href", "../" + pathNext).text(next_str));
+	$html.append($("<a>").attr("href", pathPrev).text(prev_str));
+	$html.append($("<a>").attr("href", pathNext).text(next_str));
 	$("body").prepend($html.clone());
 	$("body").append($html);
 };

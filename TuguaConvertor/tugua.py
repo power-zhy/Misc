@@ -10,6 +10,7 @@ import pickle
 import urllib.request
 import urllib.parse
 import socket
+from http import client
 from bs4 import BeautifulSoup
 from bs4.element import Tag
 from bs4.element import NavigableString
@@ -68,13 +69,13 @@ def switch_url(url):
 		if data:
 			for switch in data.strip().split(","):
 				pair = switch.split("->")
-				if len(pair) == 2:
-					urlswitch[pair[0].strip()] = pair[1].strip()
+				assert len(pair) == 2, "Config Error!\n  Invalid URL switch '{}'.".format(switch)
+				urlswitch[pair[0].strip()] = pair[1].strip()
 	for key in urlswitch:
 		url = url.replace(key, urlswitch[key])
 	return url
 
-def down_url(url, path, override=None):
+def down_url(url, path, override=None, referer=None, hook=None):
 	'''\
 	Download a web page [url:str] and save to file with [path:str].
 	Return: Bool
@@ -87,22 +88,35 @@ def down_url(url, path, override=None):
 		logger.info("File {} already exists, skip downloading.".format(path))
 		return True
 	logger.info("Downloading {} to {} ...".format(url, path))
-	headers = {"User-Agent": config["NETWORK"]["UserAgent"], "Referer": config["NETWORK"]["Referer"]}
-	for _ in range(config["NETWORK"].getint("DownloadMaxRetry")):
+	refer = config["NETWORK"]["Referer"]
+	if referer is not None:
+		refer = referer
+	elif urlsrc is not None:
+		refer = urlsrc
+	headers = {"User-Agent": config["NETWORK"]["UserAgent"], "Referer": refer}
+	for retry in range(config["NETWORK"].getint("DownloadMaxRetry")):
 		try:
 			request = urllib.request.Request(url, headers=headers)
-			with urllib.request.urlopen(request, timeout=config["NETWORK"].getint("DownloadTimeout")) as url_data, open(path, "wb") as file_data:
+			with urllib.request.urlopen(request, timeout=config["NETWORK"].getint("DownloadTimeout")) as url_data:
 				data = url_data.read()
-				if data:
+				if data and hook:
+					data = hook(url, data)
+			if data:
+				with open(path, "wb") as file_data:
 					file_data.write(data)
-					return True
+				return True
 		except socket.timeout:
-			continue
+			pass
 		except urllib.error.URLError as err:
 			if isinstance(err, urllib.error.HTTPError) and err.code == 403 and "Referer" in headers:
 				del headers["Referer"]
 			else:
-				logger.warn("Download error: {}".format(str(err)))
+				logger.warning("Download URLError: {}".format(str(err)))
+		except client.IncompleteRead as err:
+			if retry > 0 and url.startswith("https://"):
+				url = "http://" + url[8:]
+			else:
+				logger.warning("Download IncompleteRead: {}".format(str(err)))
 	logger.error("Download {} to {} failed.".format(url, path))
 	return False
 
@@ -119,7 +133,7 @@ def parse_html(data):
 				logger.info("Decoding success by '{}'".format(enc))
 				break
 			except Exception as e:
-				logger.warn("Try to decode using '{}' failed: {}".format(enc, str(e)))
+				logger.warning("Try to decode using '{}' failed: {}".format(enc, str(e)))
 	if not result:
 		result = BeautifulSoup(data, parser)
 	return result
@@ -233,7 +247,7 @@ def tugua_analyze(tag_src, soup_tmpl, stop_func=None, search_sibling = True):
 			result["src"] = src
 			return result
 		else:
-			logger.warn("Unrecognized object '{}' in '{}'.".format(tag["type"], tag))
+			logger.warning("Unrecognized object '{}' in '{}'.".format(tag["type"], tag))
 			return None
 	
 	def convert_para(tag):
@@ -252,7 +266,7 @@ def tugua_analyze(tag_src, soup_tmpl, stop_func=None, search_sibling = True):
 	
 	def convert_img(tag):
 		assert isinstance(tag, Tag) and tag.name == "img", "Tag Error!\n  Expect 'img' but actual is '{}'.".format(tag)
-		src = tag.get("src")
+		src = tag.get("data-src") or tag.get("data-original") or tag.get("src")
 		assert src, "Tag Error!\n  Invalid image url in '{}'.".format(tag)
 		if src.lower().startswith("file://"):
 			return None
@@ -271,7 +285,7 @@ def tugua_analyze(tag_src, soup_tmpl, stop_func=None, search_sibling = True):
 			result.name = "a"
 			result["href"] = href
 		else:
-			logger.warn("Unrecognized link in '{}'.".format(tag))
+			logger.warning("Unrecognized link in '{}'.".format(tag))
 		return result
 	
 	def convert_table(tag):
@@ -301,8 +315,8 @@ def tugua_analyze(tag_src, soup_tmpl, stop_func=None, search_sibling = True):
 	def convert_frame(tag):
 		assert isinstance(tag, Tag) and tag.name == "iframe", "Tag Error!\n  Expect 'iframe' but actual is '{}'.".format(tag)
 		(width, height) = get_obj_size(tag)
-		src = tag.get("src")
-		if re.match(r"(https?//)?(\S+\.)?(youku.com|tudou.com|56.com|video.qq.com)/", src):
+		src = tag.get("data-src") or tag.get("data-original") or tag.get("src")
+		if re.match(config["SOURCECONF"]["IframeSrcRegex"], src):
 			result = soup_tmpl.new_tag("embed")
 			result["type"] = "application/x-shockwave-flash"
 			result["src"] = src
@@ -322,7 +336,7 @@ def tugua_analyze(tag_src, soup_tmpl, stop_func=None, search_sibling = True):
 			result.string = src
 			return result
 		else:
-			logger.warn("Unrecognized frame in '{}'.".format(tag))
+			logger.warning("Unrecognized frame in '{}'.".format(tag))
 			return None
 	
 	def convert_str(tag):
@@ -398,7 +412,7 @@ def tugua_format(tag_src, soup_tmpl, img_dir="", img_info={}, section_id="", has
 	dest = soup_tmpl.new_tag("div")
 	if section_id:
 		dest["id"] = section_id
-	ext_regex = re.compile(r"^data:image/(\w+);|\.(\w+)$")
+	ext_regex = re.compile(r"^data:image/(\w+);|\.(\w+)$|\.(\w+)\?")
 	img_format_map = {
 		"jpeg": "jpg"
 	}
@@ -438,9 +452,9 @@ def tugua_format(tag_src, soup_tmpl, img_dir="", img_info={}, section_id="", has
 			else:
 				ext_match = ext_regex.search(tag["src"])
 				if ext_match:
-					ext = ext_match.group(1) or ext_match.group(2)
+					ext = ext_match.group(1) or ext_match.group(2) or ext_match.group(3)
 				else:
-					logger.warn("No extension found for image '{}', default to '{}'.".format(tag["src"], config["CORRECTION"]["DefaultImgExt"]))
+					logger.warning("No extension found for image '{}', default to '{}'.".format(tag["src"], config["CORRECTION"]["DefaultImgExt"]))
 					ext = config["CORRECTION"]["DefaultImgExt"]
 				ext = ext.lower()
 				if ext in img_format_map:
@@ -448,7 +462,7 @@ def tugua_format(tag_src, soup_tmpl, img_dir="", img_info={}, section_id="", has
 				img_path = os.path.join(img_dir, "{}_{:02}.{}".format(section_id, img_info["count"]+1, ext))
 				url = tag["src"].strip()
 				if url.startswith("file:"):
-					logger.warn("Illegal image url '{}', ignored.".format(url))
+					logger.warning("Illegal image url '{}', ignored.".format(url))
 				else:
 					ret = down_url(url, img_path)
 					if not ret:
@@ -546,15 +560,39 @@ def tugua_format(tag_src, soup_tmpl, img_dir="", img_info={}, section_id="", has
 		dest["class"] = config["IDENT"]["Section"]
 	return dest
 
+def tugua_srchook(url, data):
+	def hook_replace(data, args):
+		pair = args.split("->")
+		assert len(pair) == 2, "Config Error!\n  Invalid source hook arguments '{}'.".format(args)
+		return data.replace(pair[0].strip().encode(encoding="UTF-8"), pair[1].strip().encode(encoding="UTF-8"))
+	def hook_regex(data, args):
+		pair = args.split("->")
+		assert len(pair) == 2, "Config Error!\n  Invalid source hook arguments '{}'.".format(args)
+		return re.sub(pair[0].strip().encode(encoding="UTF-8"), pair[1].strip().encode(encoding="UTF-8"), data)
+
+	hook_map = {
+		"replace": hook_replace,
+		"regex": hook_regex,
+	}
+	for key, args in config["SOURCEHOOK"].items():
+		pair = key.split("@")
+		assert len(pair) == 2, "Config Error!\n  Invalid source hook key '{}'.".format(key)
+		if pair[0].strip().lower() in url.lower():
+			hook_func = hook_map.get(pair[1].strip())
+			assert hook_func, "Config Error!\n  Invalid source hook key '{}'.".format(key)
+			logger.info("Applying hook to '{}' using '{}' ...".format(url, key))
+			data = hook_func(data, args)
+	return data
+
 def tugua_download(url, directory="", date=None, orig_url=None):
 	'''\
 	Download tugua of [date:datetime|str] from [url:str], and store into [directory:str].
 	It will create a new folder named "YYYYmmdd" and store converted file into it, and store the original html file into "src" folder.
 	Return: None
 	'''
-	head_regex = re.compile(r"以下内容，有可能引起内心冲突或愤怒等不适症状。|本文转摘的各类事件，均来自于公开发表的国内媒体报道。引用的个人或媒体评论旨在传播各种声音，并不代表我们认同或反对其观点。")
-	tail_regex = re.compile(r"(友情提示：请各位河蟹评论。道理你懂的)|(请各位和谐评论，道理你懂的。)|(\s*喷嚏新浪围脖：\s*@\s*喷嚏官微\s*、\s*@\s*喷嚏意图\s*（新浪）\s*)|(广告联系：dapenti#dapenti.com)")
-	epi_regex = re.compile(r"^(友情提示：请各位河蟹评论。道理你懂的)|(请各位和谐评论，道理你懂的。)|(\s*喷嚏新浪围脖：\s*@\s*喷嚏官微\s*、\s*@\s*喷嚏意图\s*（新浪）\s*)$")
+	head_regex = re.compile(config["SOURCECONF"]["HeadRegex"])
+	tail_regex = re.compile(config["SOURCECONF"]["TailRegex"])
+	epi_regex = re.compile(config["SOURCECONF"]["EpilogueRegex"])
 	# prepare source directory
 	if not date:
 		date = datetime.date.today()
@@ -571,7 +609,7 @@ def tugua_download(url, directory="", date=None, orig_url=None):
 	global urlsrc
 	url = url.strip()
 	urlsrc = url
-	if not down_url(url, src_path):
+	if not down_url(url, src_path, referer="", hook=tugua_srchook):
 		input("Continue? ")
 	data = None
 	with open(src_path, "rb") as src_file:
@@ -668,7 +706,7 @@ def tugua_download(url, directory="", date=None, orig_url=None):
 		else:
 			curr_id = 0
 		if curr_id != number_count and curr_id + number_delta != number_count:
-			logger.warn("Subtitle number mismatch, expect '{}' but actual is '{}'.".format(number_count, subtitle_match.group(1)))
+			logger.warning("Subtitle number mismatch, expect '{}' but actual is '{}'.".format(number_count, subtitle_match.group(1)))
 			number_error = number_error + 1
 			number_delta = number_count - curr_id
 		subtitle.replace_with(dest.new_string("【{:02}】{}".format(number_count, subtitle_match.group(2).strip())))
@@ -697,7 +735,7 @@ def tugua_download(url, directory="", date=None, orig_url=None):
 			section = tugua_format(sections[index], dest, img_info=img_info, section_id="{:02}".format(index+1), has_subtitle=True)
 			# remove ad
 			for tmp_p in list(section.children):
-				if tmp_p.text.strip() in ["广告", "(adsbygoogle = window.adsbygoogle || []).push({});"]:
+				if re.match(config["SOURCECONF"]["RemoveParaRegex"], tmp_p.text.strip()):
 					tmp_p.extract()
 			#import shell
 			#shell.interact_loop(globals(), locals())
@@ -835,7 +873,7 @@ if __name__ == "__main__":
 	config = ConfigParser()
 	cwd = get_py_path()
 	os.chdir(cwd)
-	config.read("tugua.cfg")
+	config.read("tugua.cfg", encoding="UTF-8")
 	# prepare folder
 	directory=config["TUGUA"]["TuguaDir"]
 	if not os.path.isdir(directory):

@@ -1,27 +1,35 @@
+body {
+	max-width: 1000px;
+	margin: 0 auto;
+}
+
 div {
 	margin: 30px 5px 20px;
 }
 
-p, img {
+p {
 	margin: 5px 0px 10px;
+	font-size: 2em;
 }
 
-img.face {
-	margin: auto;
+img:not(.face) {
+	margin: 5px 0px 10px;
+	width: 100%;
 }
 
 .quick_nav a {
 	margin: 10px 30px;
+	font-size: 1em;
 }
 
 .title {
 	font-weight: bold;
-	font-size: x-large;
+	font-size: 2em;
 }
 
 .subtitle {
 	font-weight: bold;
-	font-size: large;
+	font-size: 2em;
 }
 
 .extra {
